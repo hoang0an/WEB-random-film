@@ -1,6 +1,11 @@
 import { supabase } from './supabase';
 import type { Group, Movie } from './domain';
 
+export class ServiceError extends Error {
+  status: number;
+  constructor(message: string, status: number) {super(message); this.status = status;}
+}
+
 function client() { if (!supabase) throw new Error('Chưa cấu hình Supabase.'); return supabase; }
 export function readableError(error: unknown) {
   const msg = error instanceof Error ? error.message : String((error as { message?: string })?.message || error);
@@ -18,12 +23,12 @@ export function readableError(error: unknown) {
 }
 export async function rpc(name: string, args: Record<string, unknown>) {
   const { data, error } = await client().rpc(name, args);
-  if (error) throw error;
+  if (error) throw new ServiceError(error.message, error.code === 'PGRST301' || error.code === 'PGRST303' ? 401 : 400);
   return data;
 }
 export async function loadGroups(): Promise<Group[]> {
   const { data, error } = await client().from('groups').select('*,members(user_id,profiles(id,name)),group_movies!group_movies_group_id_fkey(*),ratings(*,profiles(name)),comments(*,profiles(name))').order('created_at');
-  if (error) throw error;
+  if (error) throw new ServiceError(error.message, error.code === 'PGRST301' || error.code === 'PGRST303' ? 401 : 400);
   return (data || []).map(g => ({ id: g.id, name: g.name, code: g.invite_code, tonightId: g.tonight_id,
     members: g.members.map((m: {user_id: string; profiles: {name: string} | null}) => ({id: m.user_id, name: m.profiles?.name || 'Thành viên'})),
     movies: g.group_movies.map((m: Record<string, unknown>) => ({ id: m.tmdb_id, entryId: m.id, title: m.title, year: m.year, runtime: m.runtime, overview: m.overview, poster: m.poster, backdrop: m.backdrop, genres: Array.isArray(m.genres) ? m.genres : [], addedBy: m.added_by, addedName: g.members.find((p: { user_id: string }) => p.user_id === m.added_by)?.profiles?.name || 'Thành viên', watchedAt: m.watched_at })),
@@ -32,10 +37,11 @@ export async function loadGroups(): Promise<Group[]> {
   })) as Group[];
 }
 export async function movieRequest(query: string | number): Promise<Movie[]> {
-  const { data } = await client().auth.getSession();
+  const { data, error } = await client().auth.getSession();
+  if (error) throw error;
   const params = typeof query === 'number' ? `id=${query}` : `q=${encodeURIComponent(query)}`;
   const response = await fetch(`/api/movies?${params}`, { headers: { Authorization: `Bearer ${data.session?.access_token || ''}` } });
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Không thể lấy dữ liệu phim.');
+  if (!response.ok) throw new ServiceError(result.error || 'Không thể lấy dữ liệu phim.', response.status);
   return result.movies;
 }

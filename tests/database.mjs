@@ -11,6 +11,17 @@ await db.exec(await readFile('supabase/migrations/20261009_movie_genres.sql', 'u
 await db.exec(await readFile('supabase/migrations/20261009_movie_genres.sql', 'utf8'));
 const a='00000000-0000-0000-0000-000000000001', b='00000000-0000-0000-0000-000000000002', c='00000000-0000-0000-0000-000000000003';
 await db.query(`insert into auth.users(id,email) values($1,'a@test.dev'),($2,'b@test.dev'),($3,'c@test.dev')`,[a,b,c]);
+const profiles=[
+  ['00000000-0000-0000-0000-000000000010','named@test.dev',{name:'  An  ',full_name:'Fallback'},'An'],
+  ['00000000-0000-0000-0000-000000000011','google@test.dev',{name:' ',full_name:'  Google Name  '},'Google Name'],
+  ['00000000-0000-0000-0000-000000000012','emailfallback@test.dev',{},'emailfallback'],
+  ['00000000-0000-0000-0000-000000000013','long@test.dev',{name:'x'.repeat(100)},'x'.repeat(80)],
+];
+for(const [id,email,metadata,name] of profiles) {
+  await db.query('insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3::jsonb)',[id,email,JSON.stringify(metadata)]);
+  const found=(await db.query('select name from public.profiles where id=$1',[id])).rows;
+  assert.equal(found.length,1); assert.equal(found[0].name,name);
+}
 async function login(id) {await db.exec('reset role'); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]); await db.exec('set role authenticated');}
 async function rejects(sql, params, match) {await assert.rejects(db.query(sql,params),match);}
 await login(a);
@@ -59,6 +70,9 @@ assert.equal((await db.query('select * from public.comments')).rows.length,0);
 await rejects('select public.save_rating($1,$2,1)',[gid,mid],/not_member/);
 await db.exec('reset role; set role anon');
 await rejects('select * from public.groups',[],/permission denied/);
+await rejects('select * from public.profiles',[],/permission denied/);
+await rejects('select * from public.group_movies',[],/permission denied/);
+await rejects('select public.save_rating($1,$2,1)',[gid,mid],/permission denied/);
 await rejects("select public.create_group('Anonymous')",[],/permission denied/);
 await db.close();
 console.log('PASS: PostgreSQL schema, RLS, outsider isolation, invite, duplicates, pin/watched separation, rating bounds/upsert, author identity, comments, cross-group rejection, anonymous access.');
