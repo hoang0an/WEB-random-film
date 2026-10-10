@@ -8,12 +8,13 @@ const source = await readFile('app/api/movies/route.ts','utf8');
 const output = transpileModule(source,{compilerOptions:{module:ModuleKind.ESNext,target:ScriptTarget.ES2022}}).outputText.replaceAll("'next/server'", "'next/server.js'");
 await writeFile(fixture,output);
 const originalFetch = globalThis.fetch;
-const keys=['NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY','TMDB_READ_ACCESS_TOKEN'];
+const keys=['NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY','TMDB_READ_ACCESS_TOKEN','TMDB_API_KEY'];
 const old=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
 try {
   const {GET}=await import(fixture.href);
   const request=(params, token='test-user-token') => new NextRequest(`http://localhost/api/movies?${params}`,{headers: token ? {Authorization:`Bearer ${token}`} : {}});
   delete process.env.TMDB_READ_ACCESS_TOKEN;
+  delete process.env.TMDB_API_KEY;
   assert.equal((await GET(request('q=Barbie'))).status,503);
   process.env.NEXT_PUBLIC_SUPABASE_URL='https://project.test';
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY='test-public-key';
@@ -28,7 +29,14 @@ try {
       return Response.json({id:'00000000-0000-0000-0000-000000000001',aud:'authenticated',email:'test@test.dev',app_metadata:{},user_metadata:{}});
     }
     assert.equal(url.host,'api.themoviedb.org');
-    assert.equal(options.headers.Authorization,'Bearer private-tmdb-test-token');
+    const credential=(process.env.TMDB_API_KEY || process.env.TMDB_READ_ACCESS_TOKEN).trim();
+    if(/^[a-f0-9]{32}$/i.test(credential)) {
+      assert.equal(url.searchParams.get('api_key'),credential);
+      assert.equal(options.headers.Authorization,undefined);
+    } else {
+      assert.equal(options.headers.Authorization,'Bearer private-tmdb-test-token');
+      assert.equal(url.searchParams.has('api_key'),false);
+    }
     assert.equal(url.searchParams.get('include_adult'),'false');
     if(mode==='network') throw new TypeError('fetch failed');
     if(mode==='rate') return Response.json({}, {status:429});
@@ -51,6 +59,16 @@ try {
   mode='adult'; assert.equal((await GET(request('id=1'))).status,400);
   mode='rate'; res=await GET(request('q=Movie')); assert.equal(res.status,502); assert.match((await res.json()).error,/TMDB/);
   mode='network'; assert.equal((await GET(request('q=Movie'))).status,502);
+  mode='success';
+  const fakeKey='0123456789abcdef0123456789abcdef';
+  process.env.TMDB_READ_ACCESS_TOKEN='  '+fakeKey+'  ';
+  res=await GET(request('q=Movie')); json=await res.json();
+  assert.equal(res.status,200); assert.ok(!JSON.stringify(json).includes(fakeKey));
+  process.env.TMDB_API_KEY=fakeKey;
+  process.env.TMDB_READ_ACCESS_TOKEN='private-tmdb-test-token';
+  assert.equal((await GET(request('id=1'))).status,200);
+  delete process.env.TMDB_READ_ACCESS_TOKEN;
+  assert.equal((await GET(request('q=Movie'))).status,200);
   console.log('PASS: API configuration, auth, input validation, TMDB vi-VN/adult filtering, English fallback/runtime, private token, rate/network failure. (Mock upstream services.)');
 } finally {
   globalThis.fetch=originalFetch;
