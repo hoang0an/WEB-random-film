@@ -34,6 +34,8 @@ test('recovery uses fixed reset route; update and logout use SDK contracts', asy
     {method: 'updateUser', args: [{password: ' next1234 '}]},
     {method: 'signOut', args: [{scope: 'local'}]},
   ]);
+  await service.recover('an@example.com', 'https://cinema.example', 'INVITE1');
+  assert.deepEqual(calls[3].args, ['an@example.com', {redirectTo: 'https://cinema.example/auth/reset-password?invite=INVITE1'}]);
 });
 test('disabled Google never calls SDK, enabled Google uses callback invite', async () => {
   const {calls, service} = fixture();

@@ -109,7 +109,7 @@ with sync_playwright() as p:
         page.get_by_role('button', name='Gửi liên kết đặt lại', exact=True).click()
         expect(page.locator('.auth-card').get_by_role('status')).to_contain_text('Nếu email này có tài khoản')
         recover = [c for c in calls if c['path'].endswith('/recover')][-1]
-        assert recover['query']['redirect_to'] == [BASE + '/auth/reset-password']
+        assert recover['query']['redirect_to'] == [BASE + '/auth/reset-password?invite=AbC123']
         page.get_by_role('button', name='Quay lại đăng nhập', exact=True).click()
         state['login_error'] = None
         page.get_by_label('Mật khẩu', exact=True).fill('secret123')

@@ -6,6 +6,7 @@ import { googleEnabled, supabase } from '@/lib/supabase';
 import { createAuthService } from '@/lib/auth-service';
 import { authErrorMessage } from '@/lib/auth-errors';
 import { validateAuth, validEmail } from '@/lib/auth-validation';
+import { rememberInvite } from '@/lib/auth-redirect';
 
 type Screen = 'login' | 'signup' | 'checkEmail' | 'forgotPassword';
 const titles: Record<Screen, string> = {
@@ -37,6 +38,16 @@ export default function AuthPanel() {
 
   useEffect(() => {mounted.current = true; return () => {mounted.current = false;};}, []);
   useEffect(() => {
+    rememberInvite();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('auth') === 'forgot') setScreen('forgotPassword');
+    if (params.get('passwordUpdated') === '1') setStatus('Mật khẩu đã đổi. Hãy đăng nhập bằng mật khẩu mới.');
+    if (params.has('passwordUpdated') || params.has('auth')) {
+      params.delete('passwordUpdated'); params.delete('auth');
+      window.history.replaceState({}, '', `/${params.size ? `?${params}` : ''}`);
+    }
+  }, []);
+  useEffect(() => {
     if (!resendUntil && !recoverUntil) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -49,8 +60,7 @@ export default function AuthPanel() {
     setError(''); setStatus(''); setUnconfirmed(false);
   }
   function invite() {
-    const value = new URLSearchParams(window.location.search).get('invite');
-    return value && /^[A-Z0-9]{1,64}$/i.test(value) ? value : null;
+    return rememberInvite();
   }
   async function run(key: string, operation: () => Promise<void>) {
     if (lock.current || !service) return;
@@ -83,7 +93,7 @@ export default function AuthPanel() {
         if (!data.session) {setEmail(email.trim()); setScreen('checkEmail');}
       } else if (screen === 'forgotPassword') {
         if (Date.now() < recoverUntil) return;
-        await service.recover(email, window.location.origin);
+        await service.recover(email, window.location.origin, invite());
         if (!mounted.current) return;
         setStatus('Nếu email này có tài khoản, bạn sẽ nhận được liên kết đặt lại mật khẩu. Hãy kiểm tra cả thư rác.');
         const sentAt = Date.now(); setNow(sentAt); setRecoverUntil(sentAt + 60000);

@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
-    "test": "node --test-isolation=none --experimental-strip-types --test tests/domain.test.ts tests/movie-wheel.test.ts tests/movie-filters.test.ts tests/auth.test.ts tests/auth-service.test.ts",
+    "test": "node --test-isolation=none --experimental-strip-types --test tests/domain.test.ts tests/movie-wheel.test.ts tests/movie-filters.test.ts tests/auth.test.ts tests/auth-service.test.ts tests/auth-redirect.test.ts",
     "test:db": "node tests/database.mjs",
     "test:api": "node tests/api.mjs",
     "test:e2e": "python -X utf8 tests/e2e.py",
@@ -19,7 +19,9 @@
     "test:polish": "python -X utf8 tests/draw_polish_e2e.py",
     "test:acceptance": "python -X utf8 tests/acceptance_e2e.py",
     "test:live-errors": "python -X utf8 tests/live_failure_e2e.py",
-    "test:auth:e2e": "python -X utf8 tests/auth_e2e.py"
+    "test:auth:e2e": "python -X utf8 tests/auth_e2e.py",
+    "test:auth:sessions": "python -X utf8 tests/auth_sessions_e2e.py",
+    "test:auth:google": "python -X utf8 tests/auth_google_e2e.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.0",

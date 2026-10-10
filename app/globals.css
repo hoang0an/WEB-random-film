@@ -21,5 +21,9 @@
 .auth-feedback{font-size:12px;line-height:1.8;margin-top:16px;overflow-wrap:anywhere}
 .auth-status{color:#d8c8ad;background:#28241d;border:1px solid #51402a;padding:12px;border-radius:8px}
 .auth-switch{margin-top:10px}
+.auth-link-page{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px}
+.auth-link-page .auth-card{width:min(440px,100%)}
+.auth-link-page h1{font-size:25px;margin:16px 0}
+.auth-link-page a.button{display:flex;margin-top:16px}
 @media(max-width:680px){.auth-card input{font-size:16px}.auth-card .text-button{min-height:44px}}
 @media(max-width:680px){.poster-stage{height:170px;margin-bottom:0}.stage-card{width:100px;height:150px}.stage-card-0{transform:translateX(-96px) rotate(-13deg);top:8px}.stage-card-1{transform:translateX(-4px) rotate(13deg);top:8px}.stage-card-2{transform:translateX(-50px) rotate(-1deg);top:0}.stage-caption{font-size:6px;bottom:-2px}.hero-copy h2{font-size:43px}.draw-hero-content{gap:12px;padding-top:21px}.toast{top:auto;bottom:90px}.auth-copy footer{display:flex}}

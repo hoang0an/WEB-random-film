@@ -1,9 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { authRedirect } from './auth-redirect.ts';
 
 function callbackUrl(origin: string, invite?: string | null) {
-  const url = new URL('/auth/callback', origin);
-  if (invite && /^[A-Z0-9]{1,64}$/i.test(invite)) url.searchParams.set('invite', invite);
-  return url.href;
+  return authRedirect(origin, 'callback', invite);
 }
 
 export function createAuthService(client: SupabaseClient) {
@@ -24,8 +23,8 @@ export function createAuthService(client: SupabaseClient) {
       const {error} = await client.auth.resend({type: 'signup', email: email.trim(), options: {emailRedirectTo: callbackUrl(origin, invite)}});
       if (error) throw error;
     },
-    async recover(email: string, origin: string) {
-      const {error} = await client.auth.resetPasswordForEmail(email.trim(), {redirectTo: new URL('/auth/reset-password', origin).href});
+    async recover(email: string, origin: string, invite?: string | null) {
+      const {error} = await client.auth.resetPasswordForEmail(email.trim(), {redirectTo: authRedirect(origin, 'reset-password', invite)});
       if (error) throw error;
     },
     async updatePassword(password: string) {
