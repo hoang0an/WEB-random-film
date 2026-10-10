@@ -1,5 +1,6 @@
 export function readableError(error: unknown) {
   const msg = error instanceof Error ? error.message : String((error as { message?: string })?.message || error);
+  if (/request_timeout/i.test(msg)) return 'Máy chủ chưa phản hồi. Kết quả có thể đã được lưu; hãy kiểm tra danh sách trước khi thử lại.';
   if (/owner_cannot_leave/i.test(msg)) return 'Bạn đang là chủ nhóm. Chưa thể rời nhóm trong phiên bản này.';
   if (/movie_watched|movie_has_activity/i.test(msg)) return 'Không thể xóa phim đã có lịch sử xem hoặc đánh giá.';
   if (/forbidden/i.test(msg)) return 'Bạn không có quyền sửa hoặc xóa nội dung này.';

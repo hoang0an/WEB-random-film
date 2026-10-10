@@ -1,0 +1,12 @@
+{
+  "prepared_only": true,
+  "pr2_head": "9eafeabaa5227e5a0655e0ea898d0d6513b603f7",
+  "pr2_baseline_sha256": "461707941b1d2f712f7647ee88f7e51115ea0dc91e4e1c14eecb108bff6a15b2",
+  "pr3_migration_sha256": "20b4b9d790f8ceed6aff2b604005b1091ea57aaaab0029c88bba912a220a8cdd",
+  "production_ref": null,
+  "excluded_test_ref": "dgivczwqlzxcvxwzpadm",
+  "production_domain": "https://randomfilmkietgay.vercel.app",
+  "rollback_deployment": "4Pya1MYx5D5ABxuZiFQ9JA4wLkLe",
+  "rollback_sha": "0d9722c7704a0abd934db81c356bd6f5b1198410",
+  "checksum_encoding": "UTF-8, LF"
+}

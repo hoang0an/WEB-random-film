@@ -104,7 +104,7 @@ UI thực từ code PR #3 chạy build QA riêng, dịch vụ HTTP loopback gi�
 
 Mạng lỗi ở đây được mô phỏng bằng HTTP body ngắt giữa response; Auth fixture vẫn hoạt động. Không phải bật chế độ offline hệ điều hành trên Preview thật. Socket reset trước header có thể bị browser/SDK replay transport nên harness chuyển sang truncate body để tách rõ retry của app. Tab nền Chromium có thể trì hoãn timer polling 15 giây; bài membership được chạy theo hai checkpoint, không nhận thời hạn đồng bộ 15 giây tuyệt đối là đạt.
 
-UI chặn chủ động chuyển nhóm khi mutation còn pending; bài mất membership chứng minh dọn view và phản hồi muộn, không tuyên bố người dùng có thể chuyển nhóm giữa mutation. Request giữ vô hạn/timeout, mất mạng toàn browser và load stress chưa xác minh. Không phát hiện lỗi ứng dụng cần sửa trong các ca đã chạy.
+UI chặn chủ động chuyển nhóm khi mutation còn pending; bài mất membership chứng minh dọn view và phản hồi muộn, không tuyên bố người dùng có thể chuyển nhóm giữa mutation. Đợt đầu chưa kiểm tra request giữ vô hạn; đã kiểm tra và sửa trong đợt bổ sung dưới đây. Mất mạng toàn browser và load stress vẫn chưa xác minh.
 
 Kết quả ignored: `fault-checks.json` (6), `comment-recovery.json` (1), `offline-load.json` (1) trong `test-results/group-management/`. Test lặp lại có assertion record/count/draft tại `tests/group-management-browser.mjs`; cách chạy `tests/group-management-testing.md`. Không tạo/chạy Python suite mới.
 
@@ -112,12 +112,12 @@ Kết quả ignored: `fault-checks.json` (6), `comment-recovery.json` (1), `offl
 
 - A chủ nhóm và B thành viên: close nhận focus đầu, Shift+Tab tới nút cuối (Lưu tên nhóm/Rời nhóm), Tab quay close, Escape đóng settings và focus trả về trigger. Cả hai đạt.
 - A 375×812: settings nằm trong viewport, scrollWidth = 375. A 320×740: watched/detail và edit comment không tràn ngang, detail cao hơn khung có scroll nội bộ; Hủy sửa giữ nội dung. Confirm xóa điểm focus close, Shift+Tab giữ trong dialog, Escape hủy về detail, điểm A/B vẫn 8/9.
-- B desktop: confirm rời nhận focus close, Shift+Tab tới Xác nhận rời nhóm, Escape hủy về settings, membership giữ. Override 375 px ở Edge không đổi viewport đo được (1699×854), nên không tính ca này là mobile B đạt.
+- B desktop: confirm rời nhận focus close, Shift+Tab tới Xác nhận rời nhóm, Escape hủy về settings, membership giữ. Override 375 px ở Edge không đổi viewport đo được (1699×854), nên đợt đầu chưa tính mobile B đạt; đợt bổ sung bên dưới đã dùng Chrome B và đo viewport đúng.
 - Ảnh ignored: `owner-mobile-375.png`, `comment-mobile-320.png`, `race-cleanup.png`. Chưa kiểm tra điện thoại vật lý/Safari iOS, bàn phím ảo và toàn bộ dialog/ma trận breakpoint; mobile hiện là Chromium viewport, không phải chứng nhận WCAG toàn diện.
 
 ## Kiểm thử cục bộ và phần còn thiếu
 
-- **Đạt:** 24/24 unit tests (gồm helper quyền và thông báo lỗi RPC); database cũ + fresh/upgrade/repeated migration; API contract (upstream giả lập, gồm P3); typecheck; build; kiểm tra whitespace diff.
+- **Đạt:** 28/28 unit tests (đợt bổ sung deadline; trước đó 24/24) (gồm helper quyền và thông báo lỗi RPC); database cũ + fresh/upgrade/repeated migration; API contract (upstream giả lập, gồm P3); typecheck; build; kiểm tra whitespace diff.
 - Đã chạy lại các lệnh trên sau thêm harness/dependency pg: tất cả exit 0. `pg` là devDependency để lặp lại race; lockfile không nâng các thư viện ứng dụng khác. Đã dừng server QA/fixture sau kiểm thử.
 - **Đã gỡ chặn:** race thật 12/12 trên hai connection PostgreSQL, bằng chứng khóa trước commit; không lấy PGlite/API tuần tự thay thế.
 - **Đạt bổ sung có giới hạn:** 8 ca UI mạng/request chậm với fixture, keyboard settings A/B và confirm A, viewport 320/375. Phần chưa xác minh được ghi riêng ở các mục trên; không suy ra stress/full-device/full-offline coverage.
@@ -133,3 +133,15 @@ Nếu cần rollback ứng dụng: dùng Preview trước; có thể revoke EXEC
 ## Phát hành
 
 Kế hoạch có checkpoint: `docs/plans/2026-10-10-release-pr2-pr3.md`. Đã đọc lại Vercel trong đợt bổ sung: main vẫn auto-create Production deployment, Auto-assign bật; Project → Production vẫn No Environment Variables Added. Chưa thay cấu hình. Không merge/promote. #3 phải retarget main và review diff sau #2 merge; migration Production/SMTP/redirect/backup và post-release smoke chỉ là kế hoạch chờ quyền riêng.
+
+## Hoàn tất mobile B và sửa request treo trước phát hành
+
+**Mobile B trên Preview thật:** Chrome B đã đăng nhập bằng mật khẩu do người dùng nhập trực tiếp. 375×812: thành viên không có rename, nút Rời nhóm và confirm nằm trong viewport, focus close; hủy giữ membership. 320×740: watched/detail không tràn ngang, dialog cuộn nội bộ (clientHeight671/scrollHeight1057, left14/right306). Sửa own comment thành nội dung thử, lưu Supabase thành công rồi khôi phục bản gốc qua UI. Confirm xóa own rating: Shift+Tab giữ focus Xác nhận xóa, Escape hủy về detail; không xóa điểm. Reset viewport sau kiểm tra. Ảnh ignored `b-mobile-375-confirm.png`, `b-mobile-320-comment.png`.
+
+**Lỗi phát hiện và sửa:** giữ RPC không phản hồi hơn 36 giây vẫn khóa save/navigation; trước sửa chưa có thời hạn kết thúc. RPC/TMDB nay bao toàn operation bằng deadline15s, loadGroups10s, abort transport nếu có thể. Khi timeout không tự replay, đọc lại dữ liệu vì server có thể đã commit; giữ draft, bỏ late promise result. Toast lỗi hiển thị sau refresh để không biến mất trước khi unlock. Nếu refresh cũng treo, finally vẫn mở khóa sau hai deadline (khoảng25s foreground); timer nền/thiết bị ngủ không bảo đảm đồng hồ tuyệt đối.
+
+**11/11 UI fixture đạt sau sửa:** chạy lại8 ca cũ, thêm hold trước commit (quan sát16.387s), hold sau commit (16.338s), hold cả RPC và GET (26.338s). Mỗi ca chỉ1 edit_comment, bản gốc giữ nếu chưa commit; bản đã commit được đọc đúng nếu response treo. Giữ draft/mở lại nút; chuyển nhóm trước release, phản hồi muộn không reopen editor/nhóm cũ. File `deadline-checks.json` và `fault-checks-deadline.json` trong test-results/group-management. Đây là HTTP fixture dùng UI thật, không giả vờ Supabase gây mất mạng thực tế.
+
+**Checks đợt sửa:** 28/28 unit, database baseline + fresh/upgrade/repeated migration, API contract, build, typecheck, diff whitespace đều đạt. Bổ sung kiểm thử rollback permissions PGlite: revoke đúng sáu RPC, giữ rows/baseline writes, regrant authenticated và deny anon; SQL preflight chạy được. `node tests/prepare-release.mjs` xác nhận checksum baseline pinned #2 và migration #3. Sandbox hạn chế spawn git của Node nên lệnh chuẩn bị được chạy lại với quyền ngoài sandbox chỉ để đọc Git/tạo file cục bộ; không phải lỗi mã. Server QA/fixture đã dừng; next-env.d.ts trở về nội dung normal build, không commit đường QA.
+
+**Release:** `docs/release-execution.md` có inventory trực tiếp, cấu hình dự kiến, manifest/preflight/revoke/regrant, các gates và rollback deployment cụ thể. Người dùng chọn nhóm nhỏ/Gmail hiện có. Project Production chưa tạo, env Production trống, Shared không linked; Resend chưa domain. Không merge, không lưu cấu hình Production, không promote. Mail/redirect/backup-restore và smoke Production chỉ thực hiện sau duyệt. Physical phones/iOS, full-browser offline, stress tải và mọi isolation level vẫn chưa xác minh.

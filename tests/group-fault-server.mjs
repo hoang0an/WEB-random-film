@@ -44,11 +44,11 @@ const service=http.createServer(async(req,res)=>{
     res.writeHead(200,{...headers,'Content-Length':'100'});res.flushHeaders();
     res.write('{');req.socket.destroy();return;
   }
-  if(req.url.startsWith('/rest/v1/groups')){res.writeHead(200,headers).end(JSON.stringify(groups));return;}
+  if(req.url.startsWith('/rest/v1/groups')){if(mode==='hold-all'){held.push({res,read:true});return;}res.writeHead(200,headers).end(JSON.stringify(groups));return;}
   if(req.url.startsWith('/rest/v1/rpc/')) {
     let raw='';for await(const part of req) raw+=part;
     const data=JSON.parse(raw),fn=req.url.split('/').at(-1);counts[fn]=(counts[fn]||0)+1;history.push({fn,gid:data.gid});
-    if(mode==='hold'){held.push({res,fn,data});return;}
+    if(['hold','hold-after','hold-all'].includes(mode)){const committed=mode==='hold-after';if(committed)mutate(fn,data);held.push({res,fn,data,committed});return;}
     // Begin a response before truncating it; a socket reset before any headers can
     // be transparently replayed by Chromium and would not isolate app retries.
     if(mode==='drop-before'){res.writeHead(200,{...headers,'Content-Length':'100'});res.flushHeaders();res.write('{');req.socket.destroy();return;}
@@ -57,13 +57,13 @@ const service=http.createServer(async(req,res)=>{
   }
   res.writeHead(404,headers).end('{}');
 });
-const controls=['normal','offline','hold','drop-before','drop-after','release','reject','hide-first','reset'];
+const controls=['normal','offline','hold','hold-after','hold-all','drop-before','drop-after','release','reject','hide-first','reset'];
 const control=http.createServer(async(req,res)=>{
   if(req.headers.host!=='127.0.0.1:4318'){res.writeHead(403).end();return;}
   if(req.method==='POST') {
     if(req.headers.origin!=='http://127.0.0.1:4318'){res.writeHead(403).end();return;}
     let raw='';for await(const part of req)raw+=part;const action=new URLSearchParams(raw).get('action');
-    if(action==='release'||action==='reject'){for(const item of held) {if(action==='release')finish(item.res,item.fn,item.data);else item.res.writeHead(400,headers).end(JSON.stringify({message:'not_member'}));}held=[];mode='normal';}
+    if(action==='release'||action==='reject'){for(const item of held) {if(action==='release'){if(item.read||item.committed)item.res.writeHead(200,headers).end(JSON.stringify(item.read?groups:null));else finish(item.res,item.fn,item.data);}else item.res.writeHead(400,headers).end(JSON.stringify({message:'not_member'}));}held=[];mode='normal';}
     else if(action==='hide-first')groups=groups.filter(g=>g.id!==gid);
     else if(action==='reset'){if(held.length){res.writeHead(409).end();return;}reset();}
     else if(controls.includes(action))mode=action;

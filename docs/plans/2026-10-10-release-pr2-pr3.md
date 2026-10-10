@@ -105,3 +105,7 @@ PR #2 draft/head `9eafeabaa5227e5a0655e0ea898d0d6513b603f7`, main `0d9722c7704a0
 ## Điều kiện chưa đủ hiện tại
 
 Production chưa có env/project Supabase riêng được xác nhận, sender/domain production chưa sẵn sàng, cơ chế chặn auto-deploy chưa canary, chưa có backup/restore nghiệm thu production và chưa kiểm thử domain chính. Điện thoại vật lý/iOS, kéo dài request vô hạn, stress tải lớn và mọi isolation level không được suy ra từ Preview. Kế hoạch này không cấp quyền thực hiện các bước đó.
+
+## Bộ chuẩn bị đã hoàn tất sau nghiệm thu bổ sung
+
+Xem `docs/release-execution.md`: snapshot/checks, cấu hình dự kiến từng trường, SQL manifest/preflight và rollback privileges. Người dùng chốt nhóm nhỏ/Gmail; đề xuất staged Production sau một lần duyệt toàn phạm vi, không chọn merge-không-build chưa canary. Mobile B Chromium320/375 và 3 ca deadline đã đạt; lỗi request treo đã sửa, 8 ca lỗi mạng chạy lại đạt. Chưa merge, chưa tạo/cấu hình/deploy Production. Production mail/redirect/backup-restore/smoke vẫn là gates thực hiện sau duyệt, không kết luận đã nghiệm thu.

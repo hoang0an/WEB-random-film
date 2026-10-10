@@ -162,7 +162,7 @@ function CinemaWorkspace({liveUser = null, authError = '', onAuthFailure}: {live
   async function action(key: string, task: () => Promise<void> | void) {
     if (lock.current) return;
     lock.current = true; setBusy(key);
-    try {await task();} catch(error) {if (error instanceof ServiceError && error.status === 401) onAuthFailure?.(); setToast(readableError(error)); if (liveMode && user) {try {await refresh();} catch { /* keep original error */ }}}
+    try {await task();} catch(error) {if (error instanceof ServiceError && error.status === 401) onAuthFailure?.(); if (liveMode && user) {try {await refresh();} catch { /* keep original error */ }} setToast(readableError(error));}
     finally {lock.current = false; setBusy('');}
   }
   function persist(next: Store) {

@@ -44,3 +44,14 @@ Các chế độ drop/offline bắt đầu HTTP response rồi ngắt body để
 `runGroupKeyboardChecks(preview)` yêu cầu nhóm thử đã mở và dialog đóng; dùng riêng cho A chủ nhóm và B thành viên. Kiểm tra close initial focus, Shift+Tab/Tab trap, Escape và focus trả về Cài đặt nhóm. Có thể chạy cùng helper cho app fixture.
 
 Dùng viewport capability 320×740 / 375×812 để mở settings, phim đã xem, form sửa, confirm xóa điểm hoặc rời nhóm; kiểm tra cuộn và `document.documentElement.scrollWidth === innerWidth`. Hủy thao tác, không xóa dữ liệu thật. Reset viewport cuối. Phone emulation không thay nghiệm thu iOS/Safari hay bàn phím ảo trên thiết bị vật lý.
+
+## Request không phản hồi
+
+Chạy thêm từng chế độ `hold`, `hold-after`, `hold-all` qua CUA:
+
+```javascript
+const checkpoint = await checks.startDeadlineCheck(app, controller, 'hold');
+const result = await checks.finishDeadlineCheck(app, controller, checkpoint);
+```
+
+Chạy hai hàm liền nhau trong cùng lần gọi (timeout công cụ 60 giây) để quan sát toast trước khi hết hiển thị. Có ba ca mới, tổng 11 ca fixture gồm 8 hồi quy. `hold-after` commit trước khi giữ response; `hold-all` giữ cả GET nhóm. Server release phản hồi committed không mutate lần hai. Bài kiểm tra deadline helper nằm trong `npm test` (28 tests). `node tests/prepare-release.mjs` chỉ tạo SQL pinned/checksum trong test-results, không kết nối database.

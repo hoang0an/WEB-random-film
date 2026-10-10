@@ -72,5 +72,22 @@ for (const mode of ['upgrade','fresh']) {
   await login(b);await db.query('select public.join_group($1)',[code]);await db.query('select public.join_group($1)',[code]);assert.equal((await db.query('select * from public.members where group_id=$1',[gid])).rows.length,2);
   await db.exec('reset role; set role anon');await reject('select public.leave_group($1)',[gid],/permission denied/);
   await reject('select public.delete_movie($1,$2)',[gid,am],/permission denied/);
+  // Release rollback guard: deny only six new RPCs, retain baseline and rows.
+  await db.exec('reset role');
+  const before=(await db.query('select count(*)::int n from public.group_movies')).rows[0].n;
+  await db.exec(await readFile('docs/release/pr3-revoke.sql','utf8'));
+  await login(a);
+  await reject('select public.rename_group($1,$2)',[gid,'blocked'],/permission denied/);
+  await db.query('select public.save_rating($1,$2,8.5)',[gid,watched]);
+  await db.exec('reset role');
+  assert.equal((await db.query('select count(*)::int n from public.group_movies')).rows[0].n,before);
+  const newFunctions=['delete_movie(uuid,uuid)','edit_comment(uuid,uuid,text)','delete_comment(uuid,uuid)','delete_rating(uuid,uuid)','leave_group(uuid)','rename_group(uuid,text)'];
+  for(const signature of newFunctions) assert.equal((await db.query("select has_function_privilege('authenticated',$1,'EXECUTE') allowed",['public.'+signature])).rows[0].allowed,false);
+  await db.exec(await readFile('docs/release/pr3-regrant.sql','utf8'));
+  for(const signature of newFunctions) {
+    assert.equal((await db.query("select has_function_privilege('authenticated',$1,'EXECUTE') allowed",['public.'+signature])).rows[0].allowed,true);
+    assert.equal((await db.query("select has_function_privilege('anon',$1,'EXECUTE') allowed",['public.'+signature])).rows[0].allowed,false);
+  }
+  await db.exec(await readFile('docs/release/preflight.sql','utf8'));
   await db.close();console.log('PASS group management: '+mode+' schema, upgrade preserves data, repeat migration, owner/author/outsider/anon, leave and rejoin.');
 }

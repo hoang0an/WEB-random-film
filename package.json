@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
-    "test": "node --test-isolation=none --experimental-strip-types --test tests/domain.test.ts tests/movie-wheel.test.ts tests/movie-filters.test.ts tests/auth.test.ts tests/auth-service.test.ts tests/auth-redirect.test.ts tests/group-permissions.test.ts tests/repository-errors.test.ts",
+    "test": "node --test-isolation=none --experimental-strip-types --test tests/domain.test.ts tests/movie-wheel.test.ts tests/movie-filters.test.ts tests/auth.test.ts tests/auth-service.test.ts tests/auth-redirect.test.ts tests/group-permissions.test.ts tests/repository-errors.test.ts tests/request-deadline.test.ts",
     "test:db": "node tests/database.mjs && node tests/group-management-db.mjs",
     "test:api": "node tests/api.mjs",
     "test:groups:postgres": "node tests/group-concurrency-server.mjs",

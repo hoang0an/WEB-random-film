@@ -126,3 +126,45 @@ export async function runOfflineLoadCheck(app,controller) {
   assert.equal(await button(app,'Thử lại').count(),0);
   return [{test:'Offline initial group load shows retry; restoring network and retry loads groups without logout',pass:true}];
 }
+
+// One checkpoint per request lets CUA wait on observable state rather than sleep.
+export async function startDeadlineCheck(app,controller,mode='hold') {
+  const button=(tab,name)=>tab.playwright.getByRole('button',{name,exact:true});
+  await button(controller,'release').click();await controller.playwright.domSnapshot();
+  await button(controller,'reset').click();await controller.playwright.domSnapshot();
+  await app.reload();await button(app,/^QA quản lý nhóm /).click();await app.playwright.domSnapshot();
+  await button(app,'Đã xem 1').click();await app.playwright.domSnapshot();
+  await button(app,/^Poster QA phim đã xem /).click();await app.playwright.domSnapshot();
+  await button(app,'Sửa bình luận').click();await app.playwright.domSnapshot();
+  await app.playwright.getByRole('textbox',{name:'Sửa bình luận của bạn',exact:true}).fill('QA bản nháp timeout');
+  await button(controller,mode).click();await controller.playwright.domSnapshot();
+  const started=Date.now();await button(app,'Lưu bình luận').click();await app.playwright.domSnapshot();
+  assert.equal(await button(app,'Lưu bình luận').isEnabled(),false);
+  assert.equal(await button(app,'Tối nay xem gì?').isEnabled(),false);
+  return {mode,started};
+}
+export async function finishDeadlineCheck(app,controller,checkpoint) {
+  const button=(tab,name)=>tab.playwright.getByRole('button',{name,exact:true});
+  const save=button(app,'Lưu bình luận');
+  const end=Date.now()+35000;
+  while(!await save.isEnabled() && Date.now()<end) await app.playwright.domSnapshot();
+  assert.ok((await app.playwright.domSnapshot()).includes('Máy chủ chưa phản hồi'));
+  assert.ok(await save.isEnabled());assert.ok(await button(app,'Tối nay xem gì?').isEnabled());
+  assert.equal(await app.playwright.getByRole('textbox',{name:'Sửa bình luận của bạn',exact:true}).evaluate(e=>e.value),'QA bản nháp timeout');
+  await controller.reload();let state=JSON.parse(await controller.playwright.locator('pre').innerText());
+  assert.equal(state.counts.edit_comment,1);
+  assert.equal(state.groups[0].comments[0],checkpoint.mode==='hold-after'?'QA bản nháp timeout':'QA bình luận gốc');
+  const observedMs=Date.now()-checkpoint.started;
+  // Switch group before delivering a late success; old result must stay ignored.
+  await button(app,'Hủy sửa').click();await app.playwright.domSnapshot();
+  await button(app,'Đóng cửa sổ').click();await app.playwright.domSnapshot();
+  await button(app,'Tối nay xem gì?').click();await app.playwright.domSnapshot();
+  await button(app,/^QA nhóm thứ hai /).click();await app.playwright.domSnapshot();
+  await button(controller,'release').click();await controller.playwright.domSnapshot();
+  await app.playwright.domSnapshot();
+  assert.equal(await app.playwright.getByRole('dialog').count(),0);
+  assert.equal(await app.playwright.getByRole('heading',{name:'QA nhóm thứ hai',exact:true}).count(),1);
+  await controller.reload();state=JSON.parse(await controller.playwright.locator('pre').innerText());
+  assert.equal(state.counts.edit_comment,1);
+  return {test:`${checkpoint.mode}: deadline unlocks UI, preserves draft, no replay; late response cannot reopen old group`,pass:true,observedMs};
+}

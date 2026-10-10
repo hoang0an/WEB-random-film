@@ -12,6 +12,7 @@ test('group RPC errors explain the corrective action without raw database detail
     ['invalid_group_name','Tên nhóm cần từ 1 đến 80 ký tự.'],
     ['rating_missing','Điểm đã được xóa. Danh sách sẽ được cập nhật.'],
     ['not_member','Bạn không có quyền thực hiện thao tác trong nhóm này.'],
+    ['request_timeout','Máy chủ chưa phản hồi. Kết quả có thể đã được lưu; hãy kiểm tra danh sách trước khi thử lại.'],
   ];
   for(const [code,message] of cases) {
     assert.equal(readableError(new Error(code)),message);
