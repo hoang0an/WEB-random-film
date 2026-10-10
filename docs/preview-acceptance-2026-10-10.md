@@ -2,10 +2,11 @@
 
 ## Phạm vi và kết luận hiện tại
 
-Preview: https://randomfilmkietgay-git-main-hoang0an.vercel.app.
+Preview nghiệm thu bản sửa: https://randomfilmkietgay-git-codex-preview-tmdb-api-key-hoang0an.vercel.app.
+Preview đợt trước: https://randomfilmkietgay-git-main-hoang0an.vercel.app.
 Supabase thử nghiệm: `dgivczwqlzxcvxwzpadm`, được người dùng xác nhận chỉ dùng thử dù dashboard gắn nhãn main Production. Kiểm thử trên trình duyệt và database thật, không mock. Không merge, promote hoặc cập nhật production trong đợt này.
 
-Đã hoàn tất Gmail SMTP thử nghiệm, recovery A, đăng ký/xác nhận B và quyền đọc nhóm trước/sau tham gia. Không phát hiện lỗi ứng dụng cần sửa trong các luồng này. Giữ nhóm thử `Nghiệm thu Preview 10-10` gồm A và B để kiểm tra tiếp; giữ nguyên dữ liệu có trước. Không ghi email, mật khẩu, secret, key hoặc token trong báo cáo.
+Đã hoàn tất Gmail SMTP thử nghiệm, recovery A, đăng ký/xác nhận B và kiểm thử bổ sung UI/API bằng hai phiên độc lập. Đã sửa lỗi nhận nhầm API Key TMDB như Bearer token và nghiệm thu lại trên Preview nhánh riêng. Giữ nhóm thử `Nghiệm thu Preview 10-10` gồm A/B và nhóm riêng B để kiểm tra tiếp; giữ nguyên dữ liệu có trước. Không ghi email, mật khẩu, secret, key hoặc token trong báo cáo.
 
 ## Nghiệm thu bổ sung bằng hai phiên độc lập
 
@@ -17,6 +18,7 @@ Supabase thử nghiệm: `dgivczwqlzxcvxwzpadm`, được người dùng xác nh
 | Nhóm riêng B ẩn với A | B tạo `Nghiệm thu riêng B 10-10`, 1 thành viên. A reload không thấy nhóm; GET REST groups theo id nhóm riêng trả 200 với 0 dòng. |
 | A không ghi vào nhóm riêng B | RPC add_movie/save_rating/add_comment đều 400 not_member. |
 | B thêm phim qua API | 200, trong nhóm thử; thêm trùng 409. Fixture API `Nghiệm thu API 10-10` dùng id thử, không đại diện phim TMDB thật. |
+| Thêm phim qua UI sau sửa TMDB | Đạt trên Preview f008ede: B tìm Inception và thêm Kẻ Cắp Giấc Mơ 2010; A tìm The Matrix và thêm Ma Trận 1999. Hai phiên đều thấy 2 phim chờ xem, đúng người thêm. |
 | Chốt / đánh dấu đã xem | B thao tác UI thành công trên fixture `Nghiệm thu — Interstellar`; API select_movie/mark_watched đều 204. |
 | Thêm / sửa điểm của mình | UI B 9 → 9.5, A 8; API tương tự 204. GET ratings có đúng 2 dòng, điểm [8,9.5], không nhân đôi hoặc ghi đè người khác. Điểm 8.2 bị API 400; chưa xem bị not_watched. |
 | Thêm / đọc bình luận | UI B gửi bình luận thử, A đọc và gửi bình luận riêng; API B add_comment 204. |
@@ -32,11 +34,24 @@ Supabase thử nghiệm: `dgivczwqlzxcvxwzpadm`, được người dùng xác nh
 
 Preview ban đầu thiếu TMDB_READ_ACCESS_TOKEN; UI tìm phim báo chưa cấu hình. Người dùng thêm biến kiểu Secret, chỉ Preview. Đã redeploy đúng deployment Preview (không Production), source 0d9722c; deployment `4g4tUg2GoFdVquKbB5fnXUJvosg1` Ready. Sau đó TMDB vẫn báo lỗi upstream; người dùng chỉ có API Key v3 khoảng 32 ký tự được bạn cung cấp. Route cũ gửi key này như Bearer token.
 
-Đã sửa route nhận API Key v3 qua query api_key, giữ Bearer cho Read Access Token. Hỗ trợ biến máy chủ TMDB_API_KEY và tương thích API Key đã lưu trong TMDB_READ_ACCESS_TOKEN. Không reveal hoặc sao chép secret. API contract tests, typecheck và build đều PASS; build lần đầu bị spawn EPERM trong sandbox, chạy lại ngoài hạn chế tạo tiến trình thành công. Chờ nghiệm thu bản sửa trên Preview nhánh riêng, không merge main.
+Đã sửa route nhận API Key v3 qua query api_key, giữ Bearer cho Read Access Token. Hỗ trợ biến máy chủ TMDB_API_KEY và tương thích API Key đã lưu trong TMDB_READ_ACCESS_TOKEN. Không reveal hoặc sao chép secret. API contract tests, typecheck và build đều PASS; build lần đầu bị spawn EPERM trong sandbox, chạy lại ngoài hạn chế tạo tiến trình thành công.
+
+Nhánh `codex/preview-tmdb-api-key`, commit mã f008ede, [PR nháp #2](https://github.com/hoang0an/WEB-random-film/pull/2). Deployment Preview `6Q3YkwJ423Y78zQUgYWvF2TkdQMm` Ready, đúng source f008ede. Đã đăng nhập A/Chrome và B/Edge trên origin mới; tìm/thêm TMDB qua UI thành công với API Key đã lưu, không cần lấy Read Access Token mới. Không merge main hoặc promote production.
+
+Trong phép thử UI thêm lại, nút kết quả đầu đổi thành Đã có; thao tác chọn nút Thêm kế tiếp đã thêm nhầm một phim vào nhóm thử. Đã dọn chính xác bản ghi đó bằng id + nhóm + tmdb_id + title, không sửa dữ liệu có trước. Không tính thao tác này là phép kiểm UI duplicate; API duplicate 409 đã được nghiệm thu riêng.
 
 Phim fixture đầu tiên được tạo qua SQL bằng role/claims B thật để tiếp tục UI chấm điểm/bình luận trong lúc TMDB bị chặn. Không tính thao tác SQL này là PASS thêm phim qua UI. Phép API thêm phim độc lập đã đạt.
 
 Nguồn về JWT sau signout: [Supabase signout](https://supabase.com/docs/guides/auth/signout), [Supabase sessions](https://supabase.com/docs/guides/auth/sessions). Giới hạn này được quan sát trực tiếp trong đợt nghiệm thu.
+
+### Phần còn thiếu hiện tại
+
+- Sửa/xóa phim, sửa/xóa bình luận, xóa điểm và các thao tác quản trị riêng của chủ nhóm chưa có UI/RPC; chỉ xác nhận yêu cầu ghi trực tiếp bị từ chối. Đây là thiếu chức năng, không phải PASS đầy đủ các quyền CRUD.
+- Refresh bị chặn và UI B trở về login sau thu hồi đã đạt; REST với JWT cũ còn hạn vẫn đọc được. Chưa thử sau expiry và chưa triển khai kiểm tra session_id trong RLS để thu hồi quyền API tức thì.
+- Chưa đối chiếu Auth login lỗi của mật khẩu cũ A độc lập; chưa thử Google OAuth, tải email lớn hoặc production.
+- Đã dừng chương trình API loopback sau kiểm thử để xóa credential/token trong bộ nhớ. Kết quả và script thử được Git ignore, không đưa lên PR.
+
+Ảnh bổ sung trong test-results/supabase-setup: b-private-group.jpg, a-private-b-hidden.jpg, a-b-rating-comment.jpg, live-api-results.jpg, b-after-revocation.jpg, session-revocation-database.jpg, fixed-a-b-movie-list.jpg. Kết quả HTTP: test-results/live-api-acceptance-results.json (25 PASS, 0 FAIL, 1 quan sát JWT).
 
 ## Kết quả dịch vụ thật — đợt trước
 
