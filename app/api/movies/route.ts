@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 export const runtime = 'nodejs';
+function tmdbCredential() {
+  return process.env.TMDB_API_KEY?.trim() || process.env.TMDB_READ_ACCESS_TOKEN?.trim() || '';
+}
 async function tmdb(path: string, language = 'vi-VN') {
   const url = new URL(`https://api.themoviedb.org/3/${path}`);
   url.searchParams.set('language', language);
   url.searchParams.set('include_adult', 'false');
-  const result = await fetch(url, { headers: { Authorization: `Bearer ${process.env.TMDB_READ_ACCESS_TOKEN}` }, signal: AbortSignal.timeout(10000), cache: 'no-store' });
+  const credential = tmdbCredential();
+  const headers: Record<string, string> = {};
+  // Existing Preview configurations may contain a v3 key in the token field.
+  if (/^[a-f0-9]{32}$/i.test(credential)) url.searchParams.set('api_key', credential);
+  else headers.Authorization = `Bearer ${credential}`;
+  const result = await fetch(url, { headers, signal: AbortSignal.timeout(10000), cache: 'no-store' });
   if (!result.ok) throw new Error(result.status === 429 ? 'TMDB đang bận. Hãy đợi một chút rồi thử lại.' : 'Không thể lấy dữ liệu TMDB. Hãy kiểm tra cấu hình hoặc thử lại sau.');
   return result.json();
 }
@@ -13,7 +21,7 @@ function movie(m: Record<string, any>) {
   return { id: m.id, title: m.title || m.original_title, originalTitle: m.original_title, year: (m.release_date || '').slice(0, 4), runtime: m.runtime || null, overview: m.overview || 'Chưa có mô tả cho phim này.', poster: m.poster_path || null, backdrop: m.backdrop_path || null, genres: (Array.isArray(m.genres) ? m.genres : []).map((g: {name?: string}) => g.name).filter((name: unknown) => typeof name === 'string' && name.length > 0) };
 }
 export async function GET(request: NextRequest) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || !process.env.TMDB_READ_ACCESS_TOKEN) return NextResponse.json({ error: 'Chưa cấu hình dịch vụ tìm phim TMDB.' }, { status: 503 });
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || !tmdbCredential()) return NextResponse.json({ error: 'Chưa cấu hình dịch vụ tìm phim TMDB.' }, { status: 503 });
   try {
     const token = request.headers.get('authorization')?.replace(/^Bearer /, '');
     if (!token) return NextResponse.json({error: 'Hãy đăng nhập để tìm phim.'}, {status: 401});

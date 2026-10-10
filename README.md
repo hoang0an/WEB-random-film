@@ -72,8 +72,8 @@ Hướng dẫn nguồn: [Supabase Auth](https://supabase.com/docs/guides/auth), 
 
 1. Đăng ký tại [TMDB](https://www.themoviedb.org/signup).
 2. Account Settings → API, đăng ký developer API phù hợp với dự án của bạn.
-3. Lấy **API Read Access Token** (chuỗi dài dùng Bearer), không lấy nhầm API Key v3 dạng chuỗi ngắn.
-4. Token chỉ đặt trong `TMDB_READ_ACCESS_TOKEN`. Không thêm tiền tố `NEXT_PUBLIC_` và không gửi token lên GitHub.
+3. Lấy **API Read Access Token** (chuỗi dài dùng Bearer), hoặc **API Key v3** (32 ký tự).
+4. Read Access Token đặt trong `TMDB_READ_ACCESS_TOKEN`; API Key đặt trong `TMDB_API_KEY`. Cấu hình cũ có API Key trong trường token vẫn được hỗ trợ. Không thêm tiền tố `NEXT_PUBLIC_` và không gửi thông tin xác thực lên GitHub.
 
 [TMDB FAQ](https://developer.themoviedb.org/docs/faq) mô tả điều kiện dùng API và ghi nguồn. Website có logo, link và thông báo ghi nguồn trong footer. Nếu dùng dự án cho thương mại, kiểm tra lại điều kiện đăng ký phù hợp.
 
