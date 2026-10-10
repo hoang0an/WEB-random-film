@@ -9,6 +9,12 @@ export class ServiceError extends Error {
 function client() { if (!supabase) throw new Error('Chưa cấu hình Supabase.'); return supabase; }
 export function readableError(error: unknown) {
   const msg = error instanceof Error ? error.message : String((error as { message?: string })?.message || error);
+  if (/owner_cannot_leave/i.test(msg)) return 'Bạn đang là chủ nhóm. Chưa thể rời nhóm trong phiên bản này.';
+  if (/movie_watched|movie_has_activity/i.test(msg)) return 'Không thể xóa phim đã có lịch sử xem hoặc đánh giá.';
+  if (/forbidden/i.test(msg)) return 'Bạn không có quyền sửa hoặc xóa nội dung này.';
+  if (/invalid_comment/i.test(msg)) return 'Bình luận cần từ 1 đến 1000 ký tự.';
+  if (/invalid_group_name/i.test(msg)) return 'Tên nhóm cần từ 1 đến 80 ký tự.';
+  if (/rating_missing/i.test(msg)) return 'Điểm đã được xóa. Danh sách sẽ được cập nhật.';
   if (/duplicate|unique|already_exists/i.test(msg)) return 'Phim này đã có trong danh sách.';
   if (/invalid_invite/i.test(msg)) return 'Mã mời không đúng. Hãy kiểm tra lại với nhóm bạn.';
   if (/not_member|permission|row-level/i.test(msg)) return 'Bạn không có quyền thực hiện thao tác trong nhóm này.';
@@ -29,11 +35,11 @@ export async function rpc(name: string, args: Record<string, unknown>) {
 export async function loadGroups(): Promise<Group[]> {
   const { data, error } = await client().from('groups').select('*,members(user_id,profiles(id,name)),group_movies!group_movies_group_id_fkey(*),ratings(*,profiles(name)),comments(*,profiles(name))').order('created_at');
   if (error) throw new ServiceError(error.message, error.code === 'PGRST301' || error.code === 'PGRST303' ? 401 : 400);
-  return (data || []).map(g => ({ id: g.id, name: g.name, code: g.invite_code, tonightId: g.tonight_id,
+  return (data || []).map(g => ({ id: g.id, ownerId: g.owner_id, name: g.name, code: g.invite_code, tonightId: g.tonight_id,
     members: g.members.map((m: {user_id: string; profiles: {name: string} | null}) => ({id: m.user_id, name: m.profiles?.name || 'Thành viên'})),
     movies: g.group_movies.map((m: Record<string, unknown>) => ({ id: m.tmdb_id, entryId: m.id, title: m.title, year: m.year, runtime: m.runtime, overview: m.overview, poster: m.poster, backdrop: m.backdrop, genres: Array.isArray(m.genres) ? m.genres : [], addedBy: m.added_by, addedName: g.members.find((p: { user_id: string }) => p.user_id === m.added_by)?.profiles?.name || 'Thành viên', watchedAt: m.watched_at })),
     ratings: g.ratings.map((r: Record<string, any>) => ({ entryId: r.movie_id, userId: r.user_id, name: r.profiles?.name || 'Thành viên', score: Number(r.score) })),
-    comments: g.comments.map((c: Record<string, any>) => ({ id: c.id, entryId: c.movie_id, userId: c.user_id, name: c.profiles?.name || 'Thành viên', body: c.body, createdAt: c.created_at })).sort((a: {createdAt: string}, b: {createdAt: string}) => a.createdAt.localeCompare(b.createdAt))
+    comments: g.comments.map((c: Record<string, any>) => ({ id: c.id, entryId: c.movie_id, userId: c.user_id, name: c.profiles?.name || 'Thành viên đã rời', body: c.body, createdAt: c.created_at })).sort((a: {createdAt: string}, b: {createdAt: string}) => a.createdAt.localeCompare(b.createdAt))
   })) as Group[];
 }
 export async function movieRequest(query: string | number): Promise<Movie[]> {

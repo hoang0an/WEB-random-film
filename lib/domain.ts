@@ -3,7 +3,7 @@ export type Movie = { id: number; title: string; originalTitle?: string; year: s
 export type Entry = Movie & { entryId: string; addedBy: string; addedName: string; watchedAt: string | null };
 export type Rating = { entryId: string; userId: string; name: string; score: number };
 export type Comment = { id: string; entryId: string; userId: string; name: string; body: string; createdAt: string };
-export type Group = { id: string; name: string; code: string; members: Person[]; movies: Entry[]; tonightId: string | null; ratings: Rating[]; comments: Comment[] };
+export type Group = { id: string; ownerId: string; name: string; code: string; members: Person[]; movies: Entry[]; tonightId: string | null; ratings: Rating[]; comments: Comment[] };
 export type Store = { groups: Group[] };
 
 export function drawMovie(movies: Entry[], previousId?: string | null, random = Math.random): Entry | null {

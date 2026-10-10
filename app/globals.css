@@ -27,3 +27,9 @@
 .auth-link-page a.button{display:flex;margin-top:16px}
 @media(max-width:680px){.auth-card input{font-size:16px}.auth-card .text-button{min-height:44px}}
 @media(max-width:680px){.poster-stage{height:170px;margin-bottom:0}.stage-card{width:100px;height:150px}.stage-card-0{transform:translateX(-96px) rotate(-13deg);top:8px}.stage-card-1{transform:translateX(-4px) rotate(13deg);top:8px}.stage-card-2{transform:translateX(-50px) rotate(-1deg);top:0}.stage-caption{font-size:6px;bottom:-2px}.hero-copy h2{font-size:43px}.draw-hero-content{gap:12px;padding-top:21px}.toast{top:auto;bottom:90px}.auth-copy footer{display:flex}}
+/* Actions for a member's own contributions and group settings. */
+.management-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:14px; }
+.management-delete { margin-top:14px; }
+.management-target { overflow-wrap:anywhere; font-weight:600; }
+.comment form { margin-top:10px; }
+.comment textarea { width:100%; }
