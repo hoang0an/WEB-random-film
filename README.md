@@ -169,6 +169,15 @@ Kiểm thử nghiệm thu luồng đầy đủ và tình huống lỗi: `npm run
 
 `tests/live_failure_e2e.py` kiểm tra giao diện với phản hồi Supabase/TMDB giả lập trên bản build riêng `.next-live-qa`. Đây là kiểm thử lỗi dịch vụ, không xác nhận tài khoản thật. Để chạy lại, build và start với `CINEMA_QA_BUILD=1`, `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321`, `NEXT_PUBLIC_SUPABASE_ANON_KEY=qa-public-anon-key`, dùng cổng 3101 rồi chạy `npm run test:live-errors`. Chỉ dùng các giá trị này cho môi trường kiểm thử; không lưu vào `.env.local` và không dùng cho triển khai thật. Bản build mặc định vẫn ở `.next`.
 
-Không xóa phim/nhóm, bỏ phiếu, thông báo hay thống kê trong bản này. Bộ lọc thể loại và thời lượng thu hẹp tập ứng viên, không đổi cách random; bốc lại loại phim vừa chọn. Thời lượng gồm đến 120, 121–150 và trên 150 phút. Phim thiếu dữ liệu vẫn được bốc khi chọn Tất cả/Bất kỳ; khi lọc một điều kiện cụ thể, phim thiếu dữ liệu tương ứng bị loại. Nếu không còn ứng viên khác, nút Bốc lại bị vô hiệu hóa. Điểm từ 1–10 với bước 0.5; mỗi người chỉ có một điểm/phim và có thể cập nhật điểm của mình.
+Có thể xóa phim chờ, sửa/xóa bình luận và điểm của mình, rời nhóm và đổi tên nhóm theo quyền dưới đây. Chưa có xóa nhóm, bỏ phiếu, thông báo hay thống kê. Bộ lọc thể loại và thời lượng thu hẹp tập ứng viên, không đổi cách random; bốc lại loại phim vừa chọn. Thời lượng gồm đến 120, 121–150 và trên 150 phút. Phim thiếu dữ liệu vẫn được bốc khi chọn Tất cả/Bất kỳ; khi lọc một điều kiện cụ thể, phim thiếu dữ liệu tương ứng bị loại. Nếu không còn ứng viên khác, nút Bốc lại bị vô hiệu hóa. Điểm từ 1–10 với bước 0.5; mỗi người chỉ có một điểm/phim và có thể cập nhật điểm của mình.
 
 Logo TMDB trong `public/tmdb-logo.svg` là bản không chỉnh sửa của Travis Bell, [nguồn Wikimedia](https://commons.wikimedia.org/wiki/File:Tmdb.new.logo.svg) trỏ đến asset chính thức TMDB, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Poster và dữ liệu thuộc nguồn TMDB, không phải tài sản được tạo mới của website.
+
+
+## Quản lý đóng góp và nhóm
+
+Với database đã có dữ liệu, áp **chỉ** `supabase/migrations/20261010_group_self_management.sql`; không chạy lại `supabase/schema.sql`. Migration dùng transaction, không reset bảng, có thể chạy lại; bootstrap đã đồng bộ cho cài mới. Kiểm thử upgrade từ schema cũ nằm trong `tests/group-management-db.mjs`.
+
+Thành viên xóa phim chờ mình thêm, sửa/xóa điểm và bình luận của mình, hoặc rời nhóm. Chủ nhóm xóa mọi phim chờ và đổi tên nhóm; không được sửa nội dung cá nhân của người khác hoặc rời nhóm. Phim đã xem được giữ. Xóa phim đang chốt đồng thời bỏ lựa chọn tối nay. Rời nhóm giữ lịch sử nhưng mất quyền đọc/ghi; tham gia lại bằng mã không tạo membership trùng. Mọi quyền được kiểm tra trong RPC/database, bảng vẫn chỉ cho SELECT qua RLS.
+
+Kết quả Preview và giới hạn kiểm thử: [nghiệm thu quản lý nhóm](docs/group-management-acceptance-2026-10-10.md). PR #3 phụ thuộc #2, chưa merge main hoặc phát hành production.

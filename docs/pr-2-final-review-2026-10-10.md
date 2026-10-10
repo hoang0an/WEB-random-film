@@ -1,5 +1,9 @@
 # Review PR #2 và phương án merge — 10/10/2026
 
+## Cập nhật sau triển khai
+
+P3 đã sửa ở PR #2 commit `9eafeabaa5227e5a0655e0ea898d0d6513b603f7`: trim từng biến trước fallback. Test key chỉ có khoảng trắng + token hợp lệ đã thất bại trước sửa và đạt sau sửa; có thêm trường hợp legacy key có khoảng trắng hai đầu và cả hai biến trắng. API contract và typecheck đạt. Phần review dưới đây giữ nguyên làm snapshot trước sửa. PR #3 phụ thuộc #2 đã triển khai quản lý đóng góp/nhóm; xem `docs/group-management-acceptance-2026-10-10.md`. Chưa merge hoặc thay production.
+
 ## Kết luận
 
 PR https://github.com/hoang0an/WEB-random-film/pull/2 vẫn open, draft, merged=false, mergeable=true. Head `84e99e30240f8c3dbf30bd2d5065662143643572`, base main `0d9722c7704a0abd934db81c356bd6f5b1198410`. Đây là snapshot, phải kiểm tra lại SHA trước hành động merge sau này.
