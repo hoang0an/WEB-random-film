@@ -29,7 +29,7 @@ try {
       return Response.json({id:'00000000-0000-0000-0000-000000000001',aud:'authenticated',email:'test@test.dev',app_metadata:{},user_metadata:{}});
     }
     assert.equal(url.host,'api.themoviedb.org');
-    const credential=(process.env.TMDB_API_KEY || process.env.TMDB_READ_ACCESS_TOKEN).trim();
+    const credential=process.env.TMDB_API_KEY?.trim() || process.env.TMDB_READ_ACCESS_TOKEN?.trim();
     if(/^[a-f0-9]{32}$/i.test(credential)) {
       assert.equal(url.searchParams.get('api_key'),credential);
       assert.equal(options.headers.Authorization,undefined);
@@ -69,6 +69,15 @@ try {
   assert.equal((await GET(request('id=1'))).status,200);
   delete process.env.TMDB_READ_ACCESS_TOKEN;
   assert.equal((await GET(request('q=Movie'))).status,200);
+  process.env.TMDB_API_KEY='   ';
+  process.env.TMDB_READ_ACCESS_TOKEN='  private-tmdb-test-token  ';
+  assert.equal((await GET(request('q=Movie'))).status,200);
+  assert.equal(calls.at(-1).options.headers.Authorization,'Bearer private-tmdb-test-token');
+  process.env.TMDB_READ_ACCESS_TOKEN=' '+fakeKey+' ';
+  assert.equal((await GET(request('q=Movie'))).status,200);
+  assert.equal(calls.at(-1).url.searchParams.get('api_key'),fakeKey);
+  process.env.TMDB_READ_ACCESS_TOKEN='  ';
+  assert.equal((await GET(request('q=Movie'))).status,503);
   console.log('PASS: API configuration, auth, input validation, TMDB vi-VN/adult filtering, English fallback/runtime, private token, rate/network failure. (Mock upstream services.)');
 } finally {
   globalThis.fetch=originalFetch;
