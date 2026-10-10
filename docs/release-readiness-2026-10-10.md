@@ -2,6 +2,8 @@
 
 ## Kết luận
 
+**Cập nhật tài khoản sau đợt phát hành:** mã đăng ký/đăng nhập email, xác nhận/gửi lại, khôi phục password và quản lý phiên đã hoàn thiện; Google tùy chọn, mặc định tắt. Unit hiện tại 21/21, database/API, build và auth UI/session với dịch vụ giả lập đã PASS. Nghiệm thu mail/Google/domain thật vẫn chưa thực hiện vì chưa có cấu hình project. Xem [nghiệm thu tài khoản](auth-acceptance.md); bảng kiểm tra bên dưới ghi lại đợt phát hành ban đầu.
+
 **Bản dùng thử sẵn sàng xuất bản để xem và trải nghiệm.** Dữ liệu demo lưu riêng trong localStorage; không phải nhóm dùng chung giữa các thiết bị. Tích hợp Supabase/TMDB đã có mã nguồn và kiểm thử giả lập, nhưng chưa thể xác nhận production dịch vụ thật khi chưa có project, tài khoản và khóa của người dùng. Chưa triển khai hosting hay phát sinh đăng ký dịch vụ trả phí trong đợt này.
 
 Mã nguồn đang phát triển: `D:\code\a\webfilm`. Repository đích: [hoang0an/WEB-random-film](https://github.com/hoang0an/WEB-random-film), nhánh phát hành `main`. Giữ lịch sử commit README ban đầu `ed7bf18`; không force push. Bản trong thư mục chat OneDrive là nguồn cũ.

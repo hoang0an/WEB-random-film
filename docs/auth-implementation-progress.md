@@ -35,4 +35,19 @@ Kế hoạch: `docs/plans/2026-10-10-account-auth.md`.
 - Task 6: kiểm thử hồ sơ/RLS bổ sung; không thay schema khi chưa có lỗi.
 - Task 7: hướng dẫn cấu hình, kiểm thử link và phiên mở rộng, SMTP/Supabase thật với hai tài khoản do chủ dự án kiểm soát; Google tùy chọn.
 
-Đây là checkpoint sau ba task theo skill executing-plans, không phải nghiệm thu toàn bộ kế hoạch. Không push hoặc deploy.
+Đây là ghi nhận checkpoint đợt đầu. Các task 4–7 được tiếp tục theo yêu cầu người dùng; xem cập nhật dưới đây.
+
+## Đợt 2: phần mã và kiểm thử Task 4–7 hoàn tất
+
+- Đã có `/auth/callback` và `/auth/reset-password`; xác minh session qua Supabase trước khi cho đổi mật khẩu.
+- SDK xử lý liên kết implicit, bắt PASSWORD_RECOVERY; lỗi URL không mở nhóm dù đang có session cũ.
+- Invite được validate, giữ trong sessionStorage/query redirect để mở thư ở tab khác; không tự join nhóm.
+- `useAuth` quản lý phiên/refresh/network/401; workspace được tạo lại theo user.id nên toàn bộ state cũ bị dọn khi đổi tài khoản.
+- Đã kiểm thử logout giữa tab, phản hồi nhóm cũ đến chậm, refresh thành công/thất bại, mất mạng giữ phiên và retry ở màn reset.
+- Đã kiểm thử profiles/name/full_name/email fallback, giới hạn tên và quyền anon; không cần sửa schema hoặc migration mới.
+- Email và Google mặc định tắt/mở theo cấu hình đúng hợp đồng; đã kiểm thử Google OAuth redirect giả lập.
+- Đã cập nhật README và tạo `docs/auth-acceptance.md` với các bước Supabase/SMTP/redirect, cách chạy lại test và danh sách nghiệm thu thật.
+
+Kết quả mới: 21/21 unit tests, typecheck, database và API PASS; auth forms/session/service-errors trên 1440px/375px PASS; build QA và demo production PASS; demo E2E 14 nhóm và nghiệm thu demo 24 ca PASS. Xem báo cáo nghiệm thu để biết phạm vi cuối cùng.
+
+**Chưa cấu hình/nghiệm thu dịch vụ thật:** repository vẫn chưa có `.env.local` chứa URL/key của project thật. Các ca nhận email, mật khẩu cũ/mới ở dịch vụ thật, Google thật và domain hosting giữ trạng thái chưa thử. Không push hoặc deploy.

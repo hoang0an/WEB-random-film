@@ -53,7 +53,7 @@ Bạn có thể làm email trước, Google sau. Không cần gửi token bí m�
    Nếu đã chạy schema phiên bản trước khi có bộ lọc thể loại, chạy riêng `supabase/migrations/20261009_movie_genres.sql`. Phim thêm mới từ TMDB sẽ lưu thể loại; phim cũ chưa có thể loại vẫn nằm trong lựa chọn Tất cả. Migration không tự tải lại dữ liệu phim cũ.
 4. Schema gồm `profiles`, `groups`, `members`, `group_movies`, `ratings`, `comments`; RLS đã bật. Chỉ thành viên đọc được dữ liệu của nhóm. Các thay đổi đi qua RPC kiểm tra người đăng nhập và nhóm.
 5. Mở phần **Settings / API** (hoặc hộp **Connect**) lấy **Project URL** và **publishable key hoặc anon key**. Không dùng `service_role` hay secret key.
-6. **Authentication → URL Configuration**: Site URL là `http://localhost:3000`; thêm `http://localhost:3000` vào Redirect URLs.
+6. **Authentication → URL Configuration**: Site URL là `http://localhost:3000`. Thêm các Redirect URLs theo [hướng dẫn tài khoản](docs/auth-acceptance.md#cấu-hình-dịch-vụ-thật): `/auth/callback`, `/auth/reset-password` và mẫu query mã mời giới hạn ở đúng hai đường dẫn này. Giữ mẫu email mặc định sử dụng `{{ .ConfirmationURL }}` để Supabase xác thực trước khi quay về website; không dùng template PKCE/token_hash của một ứng dụng khác.
 7. Trong **Authentication → Providers**, bật Email. Khi Confirm email bật, người đăng ký phải mở thư xác nhận trước khi đăng nhập. Việc gửi email thật có thể cần cấu hình SMTP khi mở cho nhiều người.
 
 Hướng dẫn nguồn: [Supabase Auth](https://supabase.com/docs/guides/auth), [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security).
@@ -64,6 +64,7 @@ Hướng dẫn nguồn: [Supabase Auth](https://supabase.com/docs/guides/auth), 
 2. Tại [Google Cloud Console](https://console.cloud.google.com/), tạo project, cấu hình OAuth consent screen và OAuth client loại **Web application**. Khi app còn Testing, thêm tài khoản bạn và bạn bè vào Test users.
 3. Authorized JavaScript origins: `http://localhost:3000`, sau này thêm URL Vercel. Authorized redirect URI: **Callback URL của Supabase**, thường là `https://<project-ref>.supabase.co/auth/v1/callback`.
 4. Dán Google Client ID / Client Secret vào provider Google trong **Supabase**, bật provider và lưu. Không dán Google secret vào frontend.
+5. Đặt `NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=true` trong cấu hình website rồi restart/rebuild. Mặc định `false`: email/mật khẩu hoạt động độc lập, nút Google không hiện.
 
 Đối chiếu giao diện hiện tại với [hướng dẫn Google OAuth của Supabase](https://supabase.com/docs/guides/auth/social-login/auth-google).
 
@@ -90,12 +91,15 @@ Mở `.env.local` trong VS Code và điền:
 ```dotenv
 NEXT_PUBLIC_SUPABASE_URL=https://PROJECT_REF.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_OR_ANON_KEY
+NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=false
 TMDB_READ_ACCESS_TOKEN=YOUR_TMDB_API_READ_ACCESS_TOKEN
 ```
 
 Nếu `.env.local` đã có khóa, chỉnh file hiện có; đừng chạy lệnh sao chép ghi đè.
 
-Dừng server bằng Ctrl+C, rồi `npm run dev` lại. Khi có đủ URL/key Supabase, nhãn dùng thử biến mất và hiện form email/Google. Nếu TMDB token thiếu, tìm phim sẽ báo lỗi cấu hình rõ ràng. Dữ liệu demo không tự đưa vào Supabase.
+Dừng server bằng Ctrl+C, rồi `npm run dev` lại. Khi có đủ URL/key Supabase, nhãn dùng thử biến mất và hiện form email. Google chỉ hiện khi cờ bật. Form tài khoản không cần TMDB token; nếu token thiếu, tìm phim sẽ báo lỗi cấu hình rõ ràng. Dữ liệu demo không tự đưa vào Supabase.
+
+Đã bổ sung đăng ký tên/email/mật khẩu/nhập lại, hiện/ẩn mật khẩu, màn chờ xác nhận, gửi lại thư, quên/đặt lại mật khẩu và thông báo lỗi tiếng Việt. Liên kết email đi qua `/auth/callback` hoặc `/auth/reset-password`; phiên khôi phục chỉ mở form đặt lại. Tải lại giữ phiên; đổi tài khoản hoặc đăng xuất ở tab khác dọn giao diện tài khoản trước. Đăng xuất chỉ kết thúc phiên trên thiết bị hiện tại. Xem [kết quả và danh sách nghiệm thu tài khoản](docs/auth-acceptance.md); kiểm thử giả lập không xác nhận email/Google thật đã hoạt động.
 
 ### 5. Tự kiểm tra dịch vụ thật
 
@@ -128,8 +132,8 @@ Khi dùng nhóm thật, **Supabase Free** bắt đầu ở $0/tháng, tối đa 
 
 Sau khi tạo Supabase/TMDB theo hướng dẫn trên:
 
-1. Vercel → Project Settings → Environment Variables, thêm đúng ba tên trong `.env.example` với giá trị thật cho **Production**. Đánh dấu TMDB token là sensitive nếu giao diện hỗ trợ. Các biến `NEXT_PUBLIC_` được đưa vào mã trình duyệt lúc build; chỉ dùng key công khai Supabase và bật RLS. Không đặt khóa trong GitHub, README hoặc mã nguồn.
-2. Trong Supabase, Site URL là domain production; thêm chính URL đó vào Redirect URLs. Giữ localhost nếu còn phát triển. Preview chỉ dùng khi đã đặt biến và redirect cho môi trường Preview riêng.
+1. Vercel → Project Settings → Environment Variables, thêm URL/key Supabase, token TMDB và cờ Google (mặc định `false`) trong `.env.example` cho **Production**. Đánh dấu TMDB token là sensitive nếu giao diện hỗ trợ. Các biến `NEXT_PUBLIC_` được đưa vào mã trình duyệt lúc build; chỉ dùng key công khai Supabase và bật RLS. Không đặt khóa trong GitHub, README hoặc mã nguồn.
+2. Trong Supabase, Site URL là domain production; thêm callback/reset và mẫu query invite theo `docs/auth-acceptance.md` vào Redirect URLs. Giữ localhost nếu còn phát triển. Preview chỉ dùng khi đã đặt biến và redirect cho môi trường Preview riêng.
 3. Nếu bật Google, thêm domain production vào Authorized JavaScript origins; Callback URL vẫn là Supabase.
 4. **Redeploy** để frontend nhận URL/key mới. Chạy toàn bộ danh sách kiểm tra dịch vụ thật bên trên với hai tài khoản. Email xác nhận cho người ngoài cần SMTP phù hợp, xem [giới hạn SMTP mặc định](https://supabase.com/docs/guides/auth/auth-smtp).
 
