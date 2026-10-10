@@ -16,7 +16,7 @@
 | Tạo project | Form tạo mới mở được, không có thông báo hết quota; không submit | Người dùng nhập mật khẩu DB trực tiếp/hoàn tất điều khoản nếu có. Nếu quota/chọn gói trả phí xuất hiện, dừng |
 | Email | SMTP thử bật, smtp.gmail.com:465, interval 60s; sender/username và email cap bị dashboard redaction nên không trích giá trị; stored password ẩn; sender name Preview | Gmail account đã nghiệm thu; sender name `Tối nay xem gì?`, secret nhập trực tiếp ở project mới |
 | Resend | Logged in, No domains yet | Không dùng sandbox cho người dùng khác; chưa có DNS sở hữu, không mua domain |
-| Git hooks | Vercel: không deploy hooks; repo không .github workflows | Không thêm hook hay auto-merge. Git settings đang báo secondary rate limit 403 từ GitHub; cần xác minh hết lỗi và Preview mới đúng SHA trước release |
+| Git hooks | Vercel: không deploy hooks; repo không .github workflows | Không thêm hook hay auto-merge. Git settings từng báo secondary rate limit403; đọc lại đã Connected, hết thông báo lỗi. Preview commit6008121 đã Ready; không reconnect/thay integration |
 
 Mở form mới không chứng minh quota trên mọi org/account; [Supabase Free giới hạn hai project active](https://supabase.com/docs/guides/platform/billing-faq). Không cam kết SLA hoặc backup trả phí. Gmail là lựa chọn đợt nhóm nhỏ đã được người dùng chốt; dashboard cảnh báo deliverability cho personal SMTP. [Supabase SMTP](https://supabase.com/docs/guides/auth/auth-smtp), [Gmail sending limits](https://support.google.com/mail/answer/22839?hl=en). Không coi quota Gmail là số email Auth được đảm bảo.
 
@@ -54,7 +54,7 @@ Trình tự thực hiện sau một lần duyệt toàn bộ phạm vi:
 
 ## Kết quả chuẩn bị và gates còn chờ
 
-Mobile B trên Preview: 375/320px đạt các ca settings/confirm/focus/edit own comment/cancel own rating delete; không thực hiện leave/delete để kiểm tra kích thước. Lỗi request treo đã sửa, 3 ca deadline + 8 ca hồi quy UI fixture đạt. Unit28/28, database/API checks đạt; build/typecheck/diff whitespace cũng đạt. Preview head cuối ghi bổ sung sau push/Ready.
+Mobile B trên Preview: 375/320px đạt các ca settings/confirm/focus/edit own comment/cancel own rating delete; không thực hiện leave/delete để kiểm tra kích thước. Lỗi request treo đã sửa, 3 ca deadline + 8 ca hồi quy UI fixture đạt. Unit28/28, database/API checks đạt; build/typecheck/diff whitespace cũng đạt. Preview commit code `60081210bdffb6adb95af3d89468fbbef2776468` Ready, deployment `i6g8e9grv9VjqSV55seL2b732GuE` (Preview), stable alias PR3 đúng nhánh. Reload B giữ phiên, settings375px/focus/leave cancellation đạt; edit own comment qua Supabase thật thành công, khôi phục bản gốc thành công và nút điều hướng mở lại. Commit báo cáo sau chỉ cập nhật tài liệu.
 
 Chưa xác minh: project Production chưa tồn tại/ref chưa có, secrets chỉ nhập khi tạo/cấu hình sau duyệt; mail/redirect/staged/domain chính chưa test Production; backup/restore Production chưa thực hiện; hai tài khoản phải đăng ký lại ở project mới. Không lấy kết quả Preview thay Production. Điện thoại vật lý/iOS/Safari/full-browser offline/load stress vẫn ngoài bằng chứng hiện có.
 
