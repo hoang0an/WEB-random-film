@@ -10,6 +10,8 @@ import MovieWheel from '@/components/movie-wheel';
 import { imageUrl } from '@/lib/posters';
 import type { WheelRun } from '@/lib/movie-wheel';
 import { filterMovies, type DurationFilter } from '@/lib/movie-filters';
+import AuthPanel from '@/components/auth-panel';
+import { createAuthService } from '@/lib/auth-service';
 
 type Tab = 'draw' | 'list' | 'watched';
 type Modal = 'create' | 'join' | 'members' | 'detail' | null;
@@ -64,10 +66,6 @@ export default function CinemaApp() {
   const [joinCode, setJoinCode] = useState('');
   const [score, setScore] = useState('8');
   const [comment, setComment] = useState('');
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
   const drawSequence = useRef(0);
   const activeDraw = useRef<WheelRun | null>(null);
   const lock = useRef(false);
@@ -212,17 +210,6 @@ export default function CinemaApp() {
       setModal(null); openGroup(id);
     });
   }
-  function submitAuth(e: FormEvent) {
-    e.preventDefault(); if (!supabase) return;
-    void action('auth', async () => {
-      if (authMode === 'signup') {
-        const {data, error} = await supabase!.auth.signUp({email, password, options: {data: {name: name.trim()}, emailRedirectTo: window.location.origin}});
-        if (error) throw error;
-        setToast(data.session ? 'Tài khoản đã sẵn sàng.' : 'Hãy mở email xác nhận tài khoản, sau đó quay lại đăng nhập.');
-      } else {const {error} = await supabase!.auth.signInWithPassword({email, password}); if (error) throw error;}
-      setPassword('');
-    });
-  }
   async function saveRating(e: FormEvent) {
     e.preventDefault(); if (!group || !detail || !user) return;
     await action('rating', async () => {
@@ -244,9 +231,9 @@ export default function CinemaApp() {
 
   if (!ready) return <div className="loading-screen"><Clapperboard size={36}/><p>Chuẩn bị buổi xem phim…</p></div>;
   return <>
-    <header className="topbar"><button className="brand-button" onClick={() => {setGroupId(null); setResultId(null);}} disabled={!!busy}>{brand}</button><div className="header-right">{!liveMode && <span className="demo-pill"><span/>Bản dùng thử</span>}{user && <><span className="user-name">{user.name}</span><Avatar name={user.name}/><button className="icon-button" aria-label="Đăng xuất" disabled={!!busy} onClick={() => void action('logout', async () => {if (supabase) {const {error} = await supabase.auth.signOut(); if (error) throw error;} else localStorage.removeItem('cinema-demo-session'); setUser(null); setGroupId(null); setModal(null); setResultId(null); if (liveMode) setStore({groups: []});})}><LogOut size={18}/></button></>}</div></header>
+    <header className="topbar"><button className="brand-button" onClick={() => {setGroupId(null); setResultId(null);}} disabled={!!busy}>{brand}</button><div className="header-right">{!liveMode && <span className="demo-pill"><span/>Bản dùng thử</span>}{user && <><span className="user-name">{user.name}</span><Avatar name={user.name}/><button className="icon-button" aria-label="Đăng xuất" disabled={!!busy} onClick={() => void action('logout', async () => {if (supabase) {await createAuthService(supabase).logout();} else localStorage.removeItem('cinema-demo-session'); setUser(null); setGroupId(null); setModal(null); setResultId(null); if (liveMode) setStore({groups: []});})}><LogOut size={18}/></button></>}</div></header>
     {toast && <div className="toast" role="status"><span>{toast}</span><button className="icon-button" aria-label="Đóng thông báo" onClick={() => setToast('')}><X size={16}/></button></div>}
-    {!user ? <main className="auth-page"><div className="auth-copy"><div className="eyebrow"><span/> CHO NHỮNG TỐI KHÔNG BIẾT XEM GÌ</div><h1>Ít tranh luận.<br/>Nhiều <span className="accent">phim hay.</span></h1><p>Gom những bộ phim cả nhóm muốn xem.<br/>Để một cú bốc quyết định tối nay.</p><div className="auth-posters">{catalog.slice(0, 3).map(m => <Poster key={m.id} movie={m}/>)}</div><span className="small-note">Một danh sách chung. Những buổi tối đáng nhớ.</span><Credits/></div><section className="auth-card"><span className="section-kicker">HẸN NHAU Ở RẠP NHÀ</span><h2>{liveMode ? authMode === 'login' ? 'Chào bạn trở lại' : 'Bắt đầu cùng nhóm bạn' : 'Thử một buổi tối điện ảnh'}</h2><p className="muted">{liveMode ? 'Đăng nhập để mở danh sách phim của nhóm bạn.' : 'Khám phá đầy đủ luồng chọn phim với một nhóm mẫu.'}</p>{liveMode ? <><button className="button google-button" disabled={!!busy} onClick={() => void action('google', async () => {const redirectTo = `${window.location.origin}${window.location.search}`; const {error} = await supabase!.auth.signInWithOAuth({provider: 'google', options: {redirectTo}}); if (error) throw error;})}><span className="google-g">G</span>Tiếp tục với Google</button><div className="separator">hoặc dùng email</div><form onSubmit={submitAuth}>{authMode === 'signup' && <label>Tên của bạn<input required maxLength={80} value={name} onChange={e => setName(e.target.value)} autoComplete="name"/></label>}<label>Email<input type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" placeholder="ban@email.com"/></label><label>Mật khẩu<input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)} autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} placeholder="Ít nhất 8 ký tự"/></label><button className="button primary full" disabled={!!busy}>{busy === 'auth' ? 'Đang xử lý…' : authMode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}<ArrowRight size={18}/></button></form><button className="text-button full" disabled={!!busy} onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}>{authMode === 'login' ? 'Chưa có tài khoản? Đăng ký' : 'Đã có tài khoản? Đăng nhập'}</button></> : <><div className="demo-description"><Film size={22}/><div><strong>Hội mê điện ảnh đang chờ bạn</strong><p>6 phim đang chờ xem · thử bốc, chốt và chấm điểm</p></div></div><button className="button primary full" disabled={!!busy} onClick={enterDemo}>Khám phá bản dùng thử<ArrowRight size={18}/></button><p className="demo-disclaimer">Dữ liệu mẫu lưu trên trình duyệt này. Đăng nhập và chia sẻ nhóm thật sẽ hoạt động sau khi kết nối Supabase.</p></>}{loadError && <p role="alert" className="error">{loadError}</p>}</section></main> : <div className="app-shell">
+    {!user ? <main className="auth-page"><div className="auth-copy"><div className="eyebrow"><span/> CHO NHỮNG TỐI KHÔNG BIẾT XEM GÌ</div><h1>Ít tranh luận.<br/>Nhiều <span className="accent">phim hay.</span></h1><p>Gom những bộ phim cả nhóm muốn xem.<br/>Để một cú bốc quyết định tối nay.</p><div className="auth-posters">{catalog.slice(0, 3).map(m => <Poster key={m.id} movie={m}/>)}</div><span className="small-note">Một danh sách chung. Những buổi tối đáng nhớ.</span><Credits/></div><section className="auth-card"><span className="section-kicker">HẸN NHAU Ở RẠP NHÀ</span>{liveMode ? <AuthPanel/> : <><h2>Thử một buổi tối điện ảnh</h2><p className="muted">Khám phá đầy đủ luồng chọn phim với một nhóm mẫu.</p><div className="demo-description"><Film size={22}/><div><strong>Hội mê điện ảnh đang chờ bạn</strong><p>6 phim đang chờ xem · thử bốc, chốt và chấm điểm</p></div></div><button className="button primary full" disabled={!!busy} onClick={enterDemo}>Khám phá bản dùng thử<ArrowRight size={18}/></button><p className="demo-disclaimer">Dữ liệu mẫu lưu trên trình duyệt này. Đăng nhập và chia sẻ nhóm thật sẽ hoạt động sau khi kết nối Supabase.</p></>}{loadError && <p role="alert" className="error">{loadError}</p>}</section></main> : <div className="app-shell">
       <aside className="sidebar"><div className="sidebar-label">KHÔNG GIAN CỦA BẠN</div><button className={`side-link ${!group ? 'selected' : ''}`} disabled={!!busy} onClick={() => {setGroupId(null); setResultId(null);}}><Users size={18}/>Nhóm của tôi<ChevronRight size={15}/></button><div className="sidebar-label groups-label">NHÓM ĐANG THAM GIA <span>{store.groups.length}</span></div><div className="group-links">{store.groups.map((g, i) => <button className={`group-link ${g.id === groupId ? 'active' : ''}`} key={g.id} onClick={() => openGroup(g.id)} disabled={!!busy}><span className="group-initial">{g.name.slice(0,1)}</span><span>{g.name}<small>{g.members.length} thành viên</small></span>{g.id === groupId && <span className="active-dot"/>}</button>)}</div><button className="side-link muted" disabled={!!busy} onClick={() => {setGroupName(''); setModal('create');}}><Plus size={18}/>Tạo nhóm mới</button><div className="sidebar-bottom"><Ticket size={24}/><p>Phim hay hơn<br/>khi xem cùng nhau.</p><span>Mang bỏng ngô, tụi mình lo phim.</span></div></aside>
       <main className={`main-content ${group && tab === 'draw' ? 'draw-screen' : ''}`}>
         {loadError && <div className="error-banner" role="alert">{loadError}<button className="text-button" onClick={() => void action('reload', async () => {await refresh(); setLoadError('');})} disabled={!!busy}>Thử lại</button></div>}

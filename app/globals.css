@@ -9,4 +9,17 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 .tmdb-logo{object-fit:contain;display:block}.logo-credit a{text-decoration:underline;text-underline-offset:2px}.auth-copy footer{max-width:420px;margin-top:25px}.auth-copy footer>span{display:none}.auth-copy footer p{text-align:left}
+
+.auth-fields{border:0;padding:0;margin:0;min-width:0}
+.auth-intro{font-size:12px;line-height:1.8}
+.auth-email{overflow-wrap:anywhere;color:var(--text)}
+.auth-password{position:relative;display:flex;align-items:center}
+.auth-password input{padding-right:46px;margin-top:0;min-width:0}
+.auth-password .icon-button{position:absolute;right:5px;min-width:36px;min-height:36px}
+.auth-mail-note{display:flex;gap:12px;align-items:center;color:var(--muted);font-size:12px;line-height:1.8;margin:24px 0}
+.auth-mail-note svg{flex-shrink:0;color:var(--accent)}
+.auth-feedback{font-size:12px;line-height:1.8;margin-top:16px;overflow-wrap:anywhere}
+.auth-status{color:#d8c8ad;background:#28241d;border:1px solid #51402a;padding:12px;border-radius:8px}
+.auth-switch{margin-top:10px}
+@media(max-width:680px){.auth-card input{font-size:16px}.auth-card .text-button{min-height:44px}}
 @media(max-width:680px){.poster-stage{height:170px;margin-bottom:0}.stage-card{width:100px;height:150px}.stage-card-0{transform:translateX(-96px) rotate(-13deg);top:8px}.stage-card-1{transform:translateX(-4px) rotate(13deg);top:8px}.stage-card-2{transform:translateX(-50px) rotate(-1deg);top:0}.stage-caption{font-size:6px;bottom:-2px}.hero-copy h2{font-size:43px}.draw-hero-content{gap:12px;padding-top:21px}.toast{top:auto;bottom:90px}.auth-copy footer{display:flex}}

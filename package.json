@@ -18,7 +18,8 @@
     "test:wheel": "python -X utf8 tests/movie_wheel_e2e.py",
     "test:polish": "python -X utf8 tests/draw_polish_e2e.py",
     "test:acceptance": "python -X utf8 tests/acceptance_e2e.py",
-    "test:live-errors": "python -X utf8 tests/live_failure_e2e.py"
+    "test:live-errors": "python -X utf8 tests/live_failure_e2e.py",
+    "test:auth:e2e": "python -X utf8 tests/auth_e2e.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.0",
