@@ -11,9 +11,9 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
-    "test": "node --test-isolation=none --experimental-strip-types --test tests/domain.test.ts tests/movie-wheel.test.ts tests/movie-filters.test.ts tests/auth.test.ts tests/auth-service.test.ts tests/auth-redirect.test.ts tests/group-permissions.test.ts tests/repository-errors.test.ts tests/request-deadline.test.ts",
-    "test:db": "node tests/database.mjs && node tests/group-management-db.mjs",
-    "test:api": "node tests/api.mjs",
+    "test": "node --test-isolation=none --experimental-strip-types --test tests/domain.test.ts tests/movie-wheel.test.ts tests/movie-filters.test.ts tests/auth.test.ts tests/auth-service.test.ts tests/auth-redirect.test.ts tests/group-permissions.test.ts tests/repository-errors.test.ts tests/request-deadline.test.ts tests/account-contract.test.ts tests/account-repository.test.ts tests/account-demo.test.ts tests/account-integration.test.ts",
+    "test:db": "node tests/database.mjs && node tests/group-management-db.mjs && node tests/account-db.mjs && node tests/account-storage.mjs",
+    "test:api": "node tests/api.mjs && node tests/account-images-api.mjs",
     "test:groups:postgres": "node tests/group-concurrency-server.mjs",
     "test:groups:fault-server": "node tests/group-fault-server.mjs",
     "test:e2e": "python -X utf8 tests/e2e.py",
@@ -23,14 +23,17 @@
     "test:live-errors": "python -X utf8 tests/live_failure_e2e.py",
     "test:auth:e2e": "python -X utf8 tests/auth_e2e.py",
     "test:auth:sessions": "python -X utf8 tests/auth_sessions_e2e.py",
-    "test:auth:google": "python -X utf8 tests/auth_google_e2e.py"
+    "test:auth:google": "python -X utf8 tests/auth_google_e2e.py",
+    "test:account:e2e": "python -X utf8 tests/account-panel_e2e.py",
+    "test:account:live": "python -X utf8 tests/account-live_e2e.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.0",
     "lucide-react": "^0.468.0",
     "next": "^16.0.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.0",

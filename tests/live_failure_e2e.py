@@ -4,6 +4,7 @@ import json
 import os
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright, expect
 
 BASE=os.getenv('TEST_URL','http://127.0.0.1:3101')
@@ -36,6 +37,8 @@ with sync_playwright() as p:
                 return
             if '/auth/v1/' in url:
                 route.fulfill(status=200,headers=CORS,json=user)
+            elif urlparse(url).path == '/rest/v1/rpc/get_my_account':
+                route.fulfill(status=200,headers=CORS,json={'id':user['id'],'name':user['user_metadata']['name'],'avatar_path':None,'cover_path':None,'revision':0})
             elif '/rest/v1/groups' in url:
                 if state['fail_load']: route.fulfill(status=500,headers=CORS,json={'message':'network failure','code':'QA_NETWORK'})
                 else: route.fulfill(status=200,headers=CORS,json=[group])

@@ -53,6 +53,9 @@ with sync_playwright() as p:
                         if state['refresh_error']: fail('refresh_token_not_found'); return
                     else: state['user'] = B if payload['email'] == B['email'] else A
                     route.fulfill(status=200, headers=CORS, json=session(state['user']))
+                elif url.path == '/rest/v1/rpc/get_my_account':
+                    current_user = state['user']
+                    route.fulfill(status=200, headers=CORS, json={'id': current_user['id'], 'name': current_user['user_metadata']['name'], 'avatar_path': None, 'cover_path': None, 'revision': 0})
                 elif url.path == '/rest/v1/groups':
                     group = {'id': '00000000-0000-0000-0000-000000000003', 'name': 'Nhóm riêng của An', 'invite_code': 'GROUPA', 'tonight_id': None, 'members': [{'user_id': A['id'], 'profiles': {'id': A['id'], 'name': 'An'}}], 'group_movies': [], 'ratings': [], 'comments': []}
                     if state['defer_groups'] and request.frame.page == page:

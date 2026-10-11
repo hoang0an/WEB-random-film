@@ -44,6 +44,8 @@ Máy hiện tại đã có Node và đã cài thư viện. Node.js có tại [no
 
 Bạn có thể làm email trước, Google sau. Không cần gửi token bí mật trong chat.
 
+**Tính năng tài khoản mới (chưa phát hành):** đổi tên/avatar/ảnh bìa và xem điểm cá nhân sau khi rời nhóm đã được kiểm chứng cục bộ. Xem [kết quả, migration/Storage và giới hạn nghiệm thu](docs/account-feature-2026-10-12.md). Với database hiện có, dùng migration tài khoản riêng; upload ảnh cần private Storage và key server-only theo tài liệu này. Chưa nghiệm thu Storage thật hoặc Android upload.
+
 ### 1. Tạo Supabase và cơ sở dữ liệu
 
 1. Tạo tài khoản tại [Supabase](https://supabase.com/dashboard), chọn **New project**, đặt tên và lưu mật khẩu database ở nơi riêng.

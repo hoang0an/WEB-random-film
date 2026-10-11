@@ -1,8 +1,8 @@
-export type Person = { id: string; name: string };
+export type Person = { id: string; name: string; avatarPath?: string | null };
 export type Movie = { id: number; title: string; originalTitle?: string; year: string; runtime: number | null; overview: string; poster: string | null; backdrop?: string | null; genres?: string[] };
 export type Entry = Movie & { entryId: string; addedBy: string; addedName: string; watchedAt: string | null };
 export type Rating = { entryId: string; userId: string; name: string; score: number };
-export type Comment = { id: string; entryId: string; userId: string; name: string; body: string; createdAt: string };
+export type Comment = { id: string; entryId: string; userId: string; name: string; avatarPath?: string | null; body: string; createdAt: string };
 export type Group = { id: string; ownerId: string; name: string; code: string; members: Person[]; movies: Entry[]; tonightId: string | null; ratings: Rating[]; comments: Comment[] };
 export type Store = { groups: Group[] };
 

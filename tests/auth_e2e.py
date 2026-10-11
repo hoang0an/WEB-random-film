@@ -53,6 +53,8 @@ with sync_playwright() as p:
                 route.fulfill(status=200, headers=CORS, json=USER)
             elif url.path == '/rest/v1/groups':
                 route.fulfill(status=200, headers=CORS, json=[])
+            elif url.path == '/rest/v1/rpc/get_my_account':
+                route.fulfill(status=200, headers=CORS, json={'id': USER['id'], 'name': USER['user_metadata']['name'], 'avatar_path': None, 'cover_path': None, 'revision': 0})
             else:
                 raise AssertionError('Unexpected mock route: ' + url.path)
         context.route('http://127.0.0.1:54321/**', service)
