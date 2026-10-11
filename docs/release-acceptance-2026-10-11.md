@@ -29,3 +29,5 @@ Backup archive SHA256 `8d87514935620199677a99ba68b0294fd0d52b871ed92209a90781a93
 Chưa xác minh: điện thoại vật lý/iOS/Safari, đầy đủ mobile B Production, full-browser offline, tải lớn, mọi race/isolation. Gmail được chọn cho đợt nhóm nhỏ, không chứng minh khả năng gửi quy mô lớn; Google login tắt. Các tài khoản/dữ liệu Release QA mới giữ để đối chiếu, không import dữ liệu Supabase thử nghiệm.
 
 Chi tiết từng timestamp, migration/checksum và bằng chứng sanitized: docs/release-execution.md, docs/release/manifest.json. Bằng chứng thô phù hợp nằm ở test-results/release (ignored); archive và nguồn đối chiếu Auth nằm riêng trong thư mục hạn chế quyền.
+
+Chốt đợt: xem docs/auth-refresh-investigation-2026-10-11.md (8/8 phiên thử riêng, chưa chứng minh lỗi ứng dụng/nguồn từng400 cũ), docs/mobile-pilot-checklist.md và docs/mobile-pilot-feedback.md. PR tài liệu chỉ chứa các bản tổng hợp; không chứa backup, Auth export hay bằng chứng thô. Không merge/deploy thêm trong bước chốt này.
