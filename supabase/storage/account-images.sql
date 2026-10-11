@@ -1,6 +1,7 @@
 -- Storage policies are installed separately from public schema bootstrap.
 -- Run after 20261011_account_features.sql. No Storage objects are deleted by SQL.
--- Read access is authenticated download only; clients cannot mint signed URLs/list.
+-- Read access is authenticated download and its CDN metadata lookup only;
+-- clients cannot mint signed URLs/list. Both operations use the same actor check.
 -- Requires the vendor operation helper: https://supabase.com/docs/guides/storage/schema/helper-functions
 begin;
 do $$ begin
@@ -29,12 +30,12 @@ grant execute on function private.can_read_account_image(text,text) to anon,auth
 
 drop policy if exists account_images_read on storage.objects;
 create policy account_images_read on storage.objects for select to authenticated
-using (bucket_id in ('account-avatars','account-covers') and storage.allow_only_operation('object.get_authenticated') and private.can_read_account_image(bucket_id,name));
+using (bucket_id in ('account-avatars','account-covers') and (storage.allow_only_operation('object.get_authenticated') or storage.allow_only_operation('object.get_authenticated_info')) and private.can_read_account_image(bucket_id,name));
 -- Restrictive guards prevent a pre-existing permissive Storage policy from bypassing
 -- account privacy or the server's decoder. Supabase service_role bypasses RLS.
 drop policy if exists account_images_select_guard on storage.objects;
 create policy account_images_select_guard on storage.objects as restrictive for select to public
-using (bucket_id not in ('account-avatars','account-covers') or (storage.allow_only_operation('object.get_authenticated') and private.can_read_account_image(bucket_id,name)));
+using (bucket_id not in ('account-avatars','account-covers') or ((storage.allow_only_operation('object.get_authenticated') or storage.allow_only_operation('object.get_authenticated_info')) and private.can_read_account_image(bucket_id,name)));
 drop policy if exists account_images_insert_guard on storage.objects;
 create policy account_images_insert_guard on storage.objects as restrictive for insert to public
 with check (bucket_id not in ('account-avatars','account-covers'));

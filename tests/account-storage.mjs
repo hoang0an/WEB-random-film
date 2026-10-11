@@ -27,6 +27,13 @@ const operation=async value=>{await db.query("select set_config('storage.operati
 await operation('object.get_authenticated');
 await db.exec(storageSql);
 await db.exec(storageSql);
+// Existing installations receive only the two-policy repair, without reinstalling buckets.
+if(mode==='upgrade') {
+ const oldSql=storageSql.replaceAll("(storage.allow_only_operation('object.get_authenticated') or storage.allow_only_operation('object.get_authenticated_info'))","storage.allow_only_operation('object.get_authenticated')");
+ await db.exec(oldSql);
+ const repair=await readFile('supabase/storage/20261012_account_image_metadata.sql','utf8');
+ await db.exec(repair);await db.exec(repair);
+}
 const reserve=async(owner,kind='avatar',pathOverride)=>{
  const id=(await db.query('select gen_random_uuid() id')).rows[0].id;
  const path=pathOverride??owner+'/'+kind+'/'+id+'.webp';
@@ -73,9 +80,19 @@ await assert.rejects(db.query('select public.update_my_account(p_avatar_asset=>$
 await assert.rejects(db.query('insert into public.account_image_assets(id,owner_id,kind,path) values(gen_random_uuid(),$1,\'avatar\',\'forged\')',[a]),/permission denied/);
 await db.query('select public.update_my_account(p_avatar_asset=>$1,p_cover_asset=>$2,p_change_avatar=>true,p_change_cover=>true,p_expected_revision=>0)',[avatar.id,cover.id]);
 assert.deepEqual((await db.query('select name from storage.objects order by name')).rows.map(x=>x.name).sort(),[avatar.path,cover.path].sort());
+// Hosted CDN downloads first perform authenticated metadata lookup. Both
+// operations must enforce the same owner/current-peer/cover privacy rules.
+for(const value of ['object.get_authenticated','object.get_authenticated_info']) {
+ await operation(value);
+ for(const actor of [a,b,c,null]) {
+  await login(actor,actor?'authenticated':'anon');
+  const expected=actor===a?[avatar.path,cover.path]:actor===b?[avatar.path]:[];
+  assert.deepEqual((await db.query('select name from storage.objects')).rows.map(x=>x.name).sort(),expected.sort(),value+' actor '+actor);
+ }
+}
 for(const actor of [a,b,c,null]) {
  await login(actor,actor?'authenticated':'anon');
- for(const value of ['object.sign','object.sign_many','object.list','object.get_public','']) {
+ for(const value of ['object.sign','object.sign_many','object.list','object.get_public','object.info_public','object.head_authenticated_info','']) {
   await operation(value);assert.equal((await db.query('select * from storage.objects')).rows.length,0);
  }
 }
@@ -89,6 +106,8 @@ for(const role of ['authenticated','anon']) {
 await login(b);assert.deepEqual((await db.query('select name from storage.objects')).rows.map(x=>x.name),[avatar.path]);
 assert.deepEqual((await db.query('select owner_id from public.account_settings')).rows.map(x=>x.owner_id),[b]);
 await db.query('select public.leave_group($1)',[gid]);assert.equal((await db.query('select * from storage.objects')).rows.length,0);
+await operation('object.get_authenticated_info');assert.equal((await db.query('select * from storage.objects')).rows.length,0);
+await operation('object.get_authenticated');
 await login(c);assert.equal((await db.query('select * from storage.objects')).rows.length,0);
 await login(null,'anon');assert.equal((await db.query('select * from storage.objects')).rows.length,0);
 const replacement=await upload(a);await login(a);

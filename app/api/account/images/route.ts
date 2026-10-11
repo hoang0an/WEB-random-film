@@ -31,7 +31,9 @@ export async function POST(request: Request) {
       return data.user.id;
     },
     async upload(asset, bytes) {
-      const {error} = await admin.storage.from(asset.kind === 'avatar' ? 'account-avatars' : 'account-covers').upload(asset.path, bytes, {contentType: 'image/webp', upsert: false, cacheControl: '60'});
+      // CDN hits can outlive a membership/attachment change even with a user JWT.
+      // New account images must revalidate instead of keeping an old read grant.
+      const {error} = await admin.storage.from(asset.kind === 'avatar' ? 'account-avatars' : 'account-covers').upload(asset.path, bytes, {contentType: 'image/webp', upsert: false, cacheControl: '0'});
       if (error) throw new Error('storage upload failed');
     },
     async register(asset) {

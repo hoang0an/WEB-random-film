@@ -75,7 +75,7 @@ try {
     globalThis.fetch = async (input, options = {}) => {
       const target = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
       assert.equal(target.host, 'project.test');
-      calls.push({path: target.pathname, body: typeof options.body === 'string' ? JSON.parse(options.body) : null});
+      calls.push({path: target.pathname, body: typeof options.body === 'string' ? JSON.parse(options.body) : null, cacheControl: new Headers(options.headers).get('cache-control')});
       if (target.pathname === '/auth/v1/user') return Response.json(mode === 'invalid-auth' ? {message:'invalid'} : {id:uid,aud:'authenticated',email:'test@example.invalid',app_metadata:{},user_metadata:{}}, {status:mode === 'invalid-auth' ? 401 : 200});
       if (target.pathname.endsWith('/claim_account_image_cleanup')) return Response.json([], {status:200});
       if (target.pathname.endsWith('/reserve_account_image')) return mode === 'full' ? Response.json({message:'too_many_pending_images'}, {status:400}) : Response.json(null);
@@ -90,6 +90,7 @@ try {
     assert.equal(reservation.body.p_owner, uid);
     assert.equal(reservation.body.p_kind, 'avatar');
     assert.ok(stored > calls.indexOf(reservation));
+    assert.equal(calls[stored].cacheControl, 'max-age=0', 'account image objects must not retain a CDN grant after membership changes');
     mode = 'full'; calls.length = 0;
     assert.equal((await POST(req())).status, 429);
     assert.ok(!calls.some(call => call.path.startsWith('/storage/v1/object/')));
