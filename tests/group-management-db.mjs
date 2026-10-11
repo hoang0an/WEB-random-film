@@ -1,0 +1,93 @@
+import { PGlite } from '@electric-sql/pglite';
+import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+for (const mode of ['upgrade','fresh']) {
+  const db=new PGlite();
+  await db.exec(`create role anon; create role authenticated; create schema auth;
+    create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb default '{}');
+    create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+    grant usage on schema public,auth to authenticated,anon; grant execute on function auth.uid() to authenticated,anon;`);
+  await db.exec(await readFile(mode==='upgrade'?'tests/fixtures/schema-before-group-management.sql':'supabase/schema.sql','utf8'));
+  const a='00000000-0000-0000-0000-000000000001', b='00000000-0000-0000-0000-000000000002', c='00000000-0000-0000-0000-000000000003';
+  await db.query("insert into auth.users(id,email) values($1,'a@test.dev'),($2,'b@test.dev'),($3,'c@test.dev')",[a,b,c]);
+  const login=async id=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role authenticated');};
+  const reject=(sql,args,match)=>assert.rejects(db.query(sql,args),match);
+  await login(a);
+  const gid=(await db.query("select public.create_group('Test group') id")).rows[0].id;
+  const code=(await db.query('select invite_code from public.groups where id=$1',[gid])).rows[0].invite_code;
+  const add=async id=>(await db.query('select public.add_movie($1,$2::jsonb) id',[gid,JSON.stringify({id,title:'Fixture '+id})])).rows[0].id;
+  const am=await add(100), watched=await add(101);
+  await db.query('select public.select_movie($1,$2)',[gid,watched]);await db.query('select public.mark_watched($1,$2)',[gid,watched]);
+  await login(b);await db.query('select public.join_group($1)',[code]);const bm=await add(102);
+  // Existing rows are created before applying the upgrade, and must survive it.
+  await db.exec('reset role');
+  const migration=await readFile('supabase/migrations/20261010_group_self_management.sql','utf8');
+  await db.exec(migration);await db.exec(migration);
+  assert.equal((await db.query('select count(*)::int n from public.group_movies')).rows[0].n,3);
+  await login(b);
+  await reject('select public.delete_movie($1,$2)',[gid,am],/forbidden/);
+  await db.query('select public.select_movie($1,$2)',[gid,bm]);
+  await db.query('select public.delete_movie($1,$2)',[gid,bm]);
+  assert.equal((await db.query('select tonight_id from public.groups where id=$1',[gid])).rows[0].tonight_id,null);
+  const bm2=await add(102);
+  await reject('select public.delete_movie($1,$2)',[gid,watched],/forbidden|movie_watched/);
+  await db.query('select public.save_rating($1,$2,9)',[gid,watched]);
+  await db.query('select public.add_comment($1,$2,$3)',[gid,watched,'B original']);
+  const comment=(await db.query('select * from public.comments where group_id=$1',[gid])).rows[0];
+  await reject('select public.edit_comment($1,$2,$3)',[gid,comment.id,' '],/invalid_comment/);
+  await reject('select public.edit_comment($1,$2,$3)',[gid,comment.id,null],/invalid_comment/);
+  await reject('select public.edit_comment($1,$2,$3)',[gid,comment.id,'x'.repeat(1001)],/invalid_comment/);
+  await db.query('select public.edit_comment($1,$2,$3)',[gid,comment.id,' B updated ']);
+  const updated=(await db.query('select * from public.comments where id=$1',[comment.id])).rows[0];
+  assert.equal(updated.body,'B updated');assert.equal(String(updated.created_at),String(comment.created_at));
+  await login(a);await db.query('select public.save_rating($1,$2,8)',[gid,watched]);
+  await reject('select public.edit_comment($1,$2,$3)',[gid,comment.id,'owner edit'],/forbidden/);
+  await reject('select public.delete_comment($1,$2)',[gid,comment.id],/forbidden/);
+  await reject('select public.delete_movie($1,$2)',[gid,watched],/movie_watched/);
+  await db.query('select public.delete_movie($1,$2)',[gid,bm2]);
+  await reject('select public.leave_group($1)',[gid],/owner_cannot_leave/);
+  for(const name of ['', 'x'.repeat(81),null]) await reject('select public.rename_group($1,$2)',[gid,name],/invalid_group_name/);
+  await db.query('select public.rename_group($1,$2)',[gid,' Renamed ']);
+  const renamed=(await db.query('select * from public.groups where id=$1',[gid])).rows[0];assert.equal(renamed.name,'Renamed');assert.equal(renamed.invite_code,code);
+  const other=(await db.query("select public.create_group('Other') id")).rows[0].id;
+  await reject('select public.delete_movie($1,$2)',[other,am],/invalid_movie/);
+  await reject('select public.edit_comment($1,$2,$3)',[other,comment.id,'cross'],/forbidden/);
+  await reject('update public.comments set body=$1 where id=$2',['bad',comment.id],/permission denied/);
+  await reject('delete from public.group_movies where id=$1',[am],/permission denied/);
+  await login(c);await reject('select public.delete_movie($1,$2)',[gid,am],/not_member/);
+  await login(b);await reject('select public.rename_group($1,$2)',[gid,'bad'],/forbidden/);
+  await db.query('select public.delete_rating($1,$2)',[gid,watched]);
+  const rows=(await db.query('select * from public.ratings where group_id=$1',[gid])).rows;assert.equal(rows.length,1);assert.equal(rows[0].user_id,a);
+  await reject('select public.delete_rating($1,$2)',[gid,watched],/rating_missing/);
+  await db.query('select public.delete_comment($1,$2)',[gid,comment.id]);
+  await db.query('select public.save_rating($1,$2,9.5)',[gid,watched]);
+  await db.query('select public.add_comment($1,$2,$3)',[gid,watched,'Keep after leave']);
+  await db.query('select public.leave_group($1)',[gid]);
+  for(const table of ['groups','group_movies','ratings','comments','members']) {
+    const key=table==='groups'?'id':'group_id';
+    assert.equal((await db.query(`select * from public.${table} where ${key}=$1`,[gid])).rows.length,0);
+  }
+  for(const [sql,args] of [['select public.add_movie($1,$2::jsonb)',[gid,'{"id":200,"title":"bad"}']],['select public.save_rating($1,$2,1)',[gid,watched]],['select public.rename_group($1,$2)',[gid,'bad']],['select public.delete_movie($1,$2)',[gid,am]]]) await reject(sql,args,/not_member/);
+  await login(a);assert.equal((await db.query('select * from public.ratings where user_id=$1',[b])).rows.length,1);assert.equal((await db.query('select * from public.comments where user_id=$1',[b])).rows.length,1);
+  await login(b);await db.query('select public.join_group($1)',[code]);await db.query('select public.join_group($1)',[code]);assert.equal((await db.query('select * from public.members where group_id=$1',[gid])).rows.length,2);
+  await db.exec('reset role; set role anon');await reject('select public.leave_group($1)',[gid],/permission denied/);
+  await reject('select public.delete_movie($1,$2)',[gid,am],/permission denied/);
+  // Release rollback guard: deny only six new RPCs, retain baseline and rows.
+  await db.exec('reset role');
+  const before=(await db.query('select count(*)::int n from public.group_movies')).rows[0].n;
+  await db.exec(await readFile('docs/release/pr3-revoke.sql','utf8'));
+  await login(a);
+  await reject('select public.rename_group($1,$2)',[gid,'blocked'],/permission denied/);
+  await db.query('select public.save_rating($1,$2,8.5)',[gid,watched]);
+  await db.exec('reset role');
+  assert.equal((await db.query('select count(*)::int n from public.group_movies')).rows[0].n,before);
+  const newFunctions=['delete_movie(uuid,uuid)','edit_comment(uuid,uuid,text)','delete_comment(uuid,uuid)','delete_rating(uuid,uuid)','leave_group(uuid)','rename_group(uuid,text)'];
+  for(const signature of newFunctions) assert.equal((await db.query("select has_function_privilege('authenticated',$1,'EXECUTE') allowed",['public.'+signature])).rows[0].allowed,false);
+  await db.exec(await readFile('docs/release/pr3-regrant.sql','utf8'));
+  for(const signature of newFunctions) {
+    assert.equal((await db.query("select has_function_privilege('authenticated',$1,'EXECUTE') allowed",['public.'+signature])).rows[0].allowed,true);
+    assert.equal((await db.query("select has_function_privilege('anon',$1,'EXECUTE') allowed",['public.'+signature])).rows[0].allowed,false);
+  }
+  await db.exec(await readFile('docs/release/preflight.sql','utf8'));
+  await db.close();console.log('PASS group management: '+mode+' schema, upgrade preserves data, repeat migration, owner/author/outsider/anon, leave and rejoin.');
+}

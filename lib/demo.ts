@@ -24,11 +24,11 @@ export const catalog: Movie[] = [
   { id: 999000, title: 'Phim mẫu không có poster', year: '2026', runtime: null, overview: 'Dữ liệu mẫu để thử trường hợp thiếu poster và thời lượng. Đây không phải kết quả TMDB thật.', poster: null }
 ].map(movie => ({...movie, genres: demoGenres[movie.id] || []}));
 export function withDemoGenres(store: Store): Store {
-  return {...store, groups: store.groups.map(group => ({...group, movies: group.movies.map(movie => ({...movie, genres: movie.genres ?? demoGenres[movie.id] ?? []}))}))};
+  return {...store, groups: store.groups.map(group => ({...group, ownerId: group.ownerId || group.members[0]?.id || '', movies: group.movies.map(movie => ({...movie, genres: movie.genres ?? demoGenres[movie.id] ?? []}))}))};
 }
 export function initialStore(): Store {
   const names = ['Minh', 'Bạn', 'Linh', 'Minh', 'Linh', 'Bạn'];
-  return { groups: [{ id: 'demo-friends', name: 'Hội mê điện ảnh', code: 'CINEMA2026', members: [demoUser, { id: 'demo-minh', name: 'Minh' }, { id: 'demo-linh', name: 'Linh' }], tonightId: null,
+  return { groups: [{ id: 'demo-friends', ownerId: demoUser.id, name: 'Hội mê điện ảnh', code: 'CINEMA2026', members: [demoUser, { id: 'demo-minh', name: 'Minh' }, { id: 'demo-linh', name: 'Linh' }], tonightId: null,
     movies: catalog.slice(0, 6).map((m, i) => ({ ...m, entryId: `seed-${m.id}`, addedBy: names[i] === 'Bạn' ? demoUser.id : `demo-${names[i] === 'Minh' ? 'minh' : 'linh'}`, addedName: names[i], watchedAt: null })), ratings: [], comments: [] }] };
 }
 export const STORAGE_KEY = 'tonight-cinema-demo-v1';
