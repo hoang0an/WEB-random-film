@@ -31,3 +31,5 @@ Chưa xác minh: điện thoại vật lý/iOS/Safari, đầy đủ mobile B Pro
 Chi tiết từng timestamp, migration/checksum và bằng chứng sanitized: docs/release-execution.md, docs/release/manifest.json. Bằng chứng thô phù hợp nằm ở test-results/release (ignored); archive và nguồn đối chiếu Auth nằm riêng trong thư mục hạn chế quyền.
 
 Chốt đợt: xem docs/auth-refresh-investigation-2026-10-11.md (8/8 phiên thử riêng, chưa chứng minh lỗi ứng dụng/nguồn từng400 cũ), docs/mobile-pilot-checklist.md và docs/mobile-pilot-feedback.md. PR tài liệu chỉ chứa các bản tổng hợp; không chứa backup, Auth export hay bằng chứng thô. Không merge/deploy thêm trong bước chốt này.
+
+**Kết quả dùng thử người dùng xác nhận sau đó:**3 tài khoản trên Chrome, thực hiện đủ checklist, không phát hiện lỗi. Xem docs/pilot-results-2026-10-11.md. Đây là user-reported acceptance; chưa có thiết bị/hệ điều hành/phiên bản hoặc dữ liệu từng ca, không đổi các giới hạn kiểm chứng độc lập ở trên. Không có lỗi được xác định cần sửa mã/phát hành Production mới.

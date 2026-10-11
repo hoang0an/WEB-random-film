@@ -46,6 +46,8 @@ Kết quả kiểm thử lại:
 
 ## Tổng hợp sau đợt thử
 
+Kết quả đợt11/10/2026 đã ghi riêng ở [pilot-results-2026-10-11.md](pilot-results-2026-10-11.md): người dùng xác nhận3 tài khoản trên Chrome, thực hiện đủ checklist, không lỗi. Bảng dưới giữ làm mẫu cho lượt tiếp theo; không điền thiết bị/từng tài khoản khi chưa có thông tin.
+
 | Người thử (biệt danh) | Thiết bị/trình duyệt | Đạt / Lỗi / Bỏ qua | Mã lỗi | Nhận xét ngắn |
 | --- | --- | --- | --- | --- |
 | | | | | |
