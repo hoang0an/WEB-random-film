@@ -2,6 +2,39 @@ import {readFile, writeFile, unlink} from 'node:fs/promises';
 import {transpileModule, ModuleKind, ScriptTarget} from 'typescript';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
+import {deflateSync} from 'node:zlib';
+// Actual PNG chunks and CRCs ensure the regression is a decodable APNG,
+// rather than an invalid file rejected incidentally by Sharp.
+function pngChunk(type, body) {
+  const name = Buffer.from(type), length = Buffer.alloc(4), crc = Buffer.alloc(4);
+  length.writeUInt32BE(body.length);
+  let value = 0xffffffff;
+  for (const byte of Buffer.concat([name, body])) {
+    value ^= byte;
+    for (let bit = 0; bit < 8; bit++) value = (value >>> 1) ^ ((value & 1) ? 0xedb88320 : 0);
+  }
+  crc.writeUInt32BE((value ^ 0xffffffff) >>> 0);
+  return Buffer.concat([length, name, body, crc]);
+}
+function animatedPng(frames = 2) {
+  const signature = Buffer.from('89504e470d0a1a0a', 'hex');
+  const header = Buffer.alloc(13); header.writeUInt32BE(8); header.writeUInt32BE(8, 4); header[8] = 8; header[9] = 2;
+  const control = Buffer.alloc(8); control.writeUInt32BE(frames);
+  const frame = sequence => {
+    const body = Buffer.alloc(26); body.writeUInt32BE(sequence); body.writeUInt32BE(8, 4); body.writeUInt32BE(8, 8);
+    body.writeUInt16BE(1, 20); body.writeUInt16BE(10, 22); return pngChunk('fcTL', body);
+  };
+  const pixels = value => {
+    const bytes = Buffer.alloc(8 * 25, value); for (let y = 0; y < 8; y++) bytes[y * 25] = 0;
+    return deflateSync(bytes);
+  };
+  const chunks = [pngChunk('IHDR', header), pngChunk('acTL', control), frame(0), pngChunk('IDAT', pixels(180))];
+  if (frames === 2) {
+    const sequence = Buffer.alloc(4); sequence.writeUInt32BE(2);
+    chunks.push(frame(1), pngChunk('fdAT', Buffer.concat([sequence, pixels(60)])));
+  }
+  return Buffer.concat([signature, ...chunks, pngChunk('IEND', Buffer.alloc(0))]);
+}
 const fixture = new URL('./.account-images-server-fixture.mjs', import.meta.url);
 const routeFixture = new URL('./.account-images-route-fixture.mjs', import.meta.url);
 const readFixture = new URL('./.account-image-read-fixture.mjs', import.meta.url);
@@ -19,6 +52,56 @@ try {
   });
   const png = await sharp({create: {width: 64, height: 32, channels: 3, background: '#ff0000'}}).png().toBuffer();
   const req = (body = png, kind = 'avatar', token = 'valid-token', mime = 'image/png') => new Request(`http://localhost/api/account/images?kind=${kind}`, {method: 'POST', body, headers: {'Content-Type': mime, ...(token ? {Authorization: `Bearer ${token}`} : {})}});
+  const apng = animatedPng();
+  await sharp(apng).raw().toBuffer();
+  const rejectedEffects = [];
+  const rejectHandler = createImageHandler({verify: async () => uid, register: async () => {rejectedEffects.push('register');}, upload: async () => {rejectedEffects.push('upload');}, cleanup: async () => {rejectedEffects.push('cleanup');}});
+  assert.equal((await rejectHandler(req(apng))).status, 400, 'valid two-frame APNG must be rejected');
+  assert.deepEqual(rejectedEffects, [], 'rejected normalization must never register/upload/post-cleanup');
+  const insertBeforeEnd = chunk => Buffer.concat([png.subarray(0, -12), chunk, png.subarray(-12)]);
+  const oversizedLength = Buffer.from(png); oversizedLength.writeUInt32BE(0xffffffff, 8);
+  const payloadOverflow = Buffer.from(png); payloadOverflow.writeUInt32BE(png.length, 8);
+  const animationCases = [
+    ['one-frame APNG', animatedPng(1)],
+    ['acTL chunk', insertBeforeEnd(pngChunk('acTL', Buffer.alloc(8)))],
+    ['fcTL chunk', insertBeforeEnd(pngChunk('fcTL', Buffer.alloc(26)))],
+    ['fdAT chunk', insertBeforeEnd(pngChunk('fdAT', Buffer.alloc(4)))],
+  ];
+  const invalidPngCases = [
+    ...animationCases,
+    ['truncated signature', png.subarray(0, 7)],
+    ['truncated chunk header', png.subarray(0, 15)],
+    ['truncated CRC', png.subarray(0, -1)],
+    ['truncated chunk payload', png.subarray(0, 25)],
+    ['extreme declared length', oversizedLength],
+    ['length exceeds remaining bytes', payloadOverflow],
+  ];
+  for (const [label, bytes] of invalidPngCases) {
+    rejectedEffects.length = 0;
+    assert.equal((await rejectHandler(req(bytes))).status, 400, label);
+    assert.deepEqual(rejectedEffects, [], `${label}: no register/upload/post-cleanup`);
+  }
+  // A PNG text payload is not an animation header. Valid CRC avoids a decoder
+  // error masking a false-positive byte-search implementation.
+  const textPng = insertBeforeEnd(pngChunk('tEXt', Buffer.from('Comment\0literal acTL fcTL fdAT names')));
+  const formats = [
+    ['PNG text', textPng, 'image/png'],
+    ['JPEG', await sharp(png).jpeg().toBuffer(), 'image/jpeg'],
+    ['WebP', await sharp(png).webp().toBuffer(), 'image/webp'],
+  ];
+  for (const [label, bytes, mime] of formats) {
+    const normalized = [];
+    const staticHandler = createImageHandler({verify: async () => uid, register: async () => {}, upload: async (_asset, output) => {normalized.push(output);}});
+    assert.equal((await staticHandler(req(bytes, 'avatar', 'valid-token', mime))).status, 200, label);
+    const metadata = await sharp(normalized[0]).metadata();
+    assert.equal(metadata.format, 'webp'); assert.equal(metadata.width, 512); assert.equal(metadata.height, 512);
+  }
+  const frames = Buffer.alloc(8 * 16 * 3, 180); frames.fill(60, 8 * 8 * 3);
+  const animatedWebp = await sharp(frames, {raw: {width: 8, height: 16, channels: 3, pageHeight: 8}}).webp({loop: 0, delay: [100, 100]}).toBuffer();
+  assert.equal((await sharp(animatedWebp).metadata()).pages, 2, 'fixture has two actual WebP frames');
+  rejectedEffects.length = 0;
+  assert.equal((await rejectHandler(req(animatedWebp, 'avatar', 'valid-token', 'image/webp'))).status, 400);
+  assert.deepEqual(rejectedEffects, []);
   assert.equal((await handler(req(png, 'avatar', ''))).status, 401);
   assert.equal((await handler(req(png, 'other'))).status, 400);
   assert.equal((await handler(req(png, 'avatar', 'valid-token', 'image/svg+xml'))).status, 400);
@@ -94,6 +177,11 @@ try {
     assert.equal(reservation.body.p_kind, 'avatar');
     assert.ok(stored > calls.indexOf(reservation));
     assert.equal(calls[stored].cacheControl, 'max-age=0', 'account image objects must not retain a CDN grant after membership changes');
+    for (const [label, bytes] of [['two-frame APNG', apng], ...invalidPngCases]) {
+      calls.length = 0;
+      assert.equal((await POST(req(bytes))).status, 400, `Route: ${label}`);
+      assert.deepEqual(calls.map(call => call.path), ['/auth/v1/user', '/rest/v1/rpc/claim_account_image_cleanup'], `${label}: only auth and existing pre-normalization cleanup; no reserve/upload/post-cleanup`);
+    }
     mode = 'full'; calls.length = 0;
     assert.equal((await POST(req())).status, 429);
     assert.ok(!calls.some(call => call.path.startsWith('/storage/v1/object/')));

@@ -35,8 +35,26 @@ async function readLimited(request: Request, signal: AbortSignal): Promise<Buffe
     return Buffer.concat(parts, length);
   } finally {signal.removeEventListener('abort', abort); reader.releaseLock();}
 }
+function checkStaticPng(bytes: Buffer): void {
+  const signature = Buffer.from('89504e470d0a1a0a', 'hex');
+  if (bytes.length < signature.length || !bytes.subarray(0, signature.length).equals(signature)) throw new Error('invalid PNG signature');
+  // Sharp may expose APNG as a single page. Inspect only actual chunk headers:
+  // payload text containing an animation name must remain a valid static PNG.
+  let offset = signature.length;
+  while (offset < bytes.length) {
+    const remaining = bytes.length - offset;
+    if (remaining < 12) throw new Error('truncated PNG chunk');
+    const length = bytes.readUInt32BE(offset);
+    if (length > remaining - 12) throw new Error('truncated PNG payload or CRC');
+    const type = bytes.toString('ascii', offset + 4, offset + 8);
+    if (type === 'acTL' || type === 'fcTL' || type === 'fdAT') throw new Error('animated PNG');
+    offset += length + 12;
+  }
+  // Sharp still validates CRCs, image structure and pixels during decoding.
+}
 async function normalizeImage(bytes: Buffer, mime: string, kind: ImageKind): Promise<Buffer> {
   try {
+    if (mime === 'image/png') checkStaticPng(bytes);
     const image = sharp(bytes, {limitInputPixels: ACCOUNT_IMAGE_PIXEL_LIMIT, failOn: 'warning'});
     const meta = await image.metadata();
     const allowed = {jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp'};
