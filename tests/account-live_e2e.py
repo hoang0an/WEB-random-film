@@ -39,6 +39,7 @@ with sync_playwright() as p:
         context = browser.new_context(viewport={'width': width, 'height': 900 if width > 680 else 850}, is_mobile=width <= 680, has_touch=width <= 680)
         context.add_init_script('if (!sessionStorage.getItem("qa-account-seeded")) {localStorage.setItem("sb-127-auth-token",' + json.dumps(json.dumps(session())) + ');sessionStorage.setItem("qa-account-seeded","1");}')
         state = {'user': A, 'profiles': {A['id']: profile(A), B['id']: profile(B)}, 'fail_profile': False, 'fail_ratings': True, 'write_mode': 'normal', 'writes': 0, 'uploads': 0, 'image_reads': 0, 'image_mode': 'denied', 'image_bytes': None, 'hold_reads': False, 'held': []}
+        state.update(upload_ok=False, hold_image=False, held_images=[])
         errors = []
         page = context.new_page()
         page.set_default_timeout(10000)
@@ -87,6 +88,10 @@ with sync_playwright() as p:
                 assert args['p_expected_revision'] == current['revision']
                 current['name'] = args['p_name'] or current['name']
                 current['revision'] += 1
+                for kind in ['avatar', 'cover']:
+                    if args.get('p_change_' + kind):
+                        asset = args.get('p_' + kind + '_asset')
+                        current[kind + '_path'] = state['user']['id'] + '/' + kind + '/' + asset + '.webp' if asset else None
                 if state['write_mode'] == 'lost':
                     # Server committed, response lost, and reconciliation read fails.
                     state['fail_profile'] = True
@@ -110,14 +115,22 @@ with sync_playwright() as p:
                 state['image_reads'] += 1
                 query = parse_qs(urlparse(request.url).query)
                 assert query['kind'][0] in ['avatar', 'cover'] and query.get('path')
+                if state['hold_image'] and query['path'][0].endswith('00000000-0000-0000-0000-000000000004.webp'):
+                    state['held_images'].append(route)
+                    return
                 if state['image_mode'] == 'ok':
                     route.fulfill(status=200, content_type='image/webp', headers={'Cache-Control': 'private, no-store, max-age=0'}, body=state['image_bytes'])
+                elif state['image_mode'] == 'error':
+                    route.fulfill(status=502, headers={'Cache-Control': 'private, no-store, max-age=0'}, json={'error': 'Unavailable'})
                 else:
                     route.fulfill(status=404, headers={'Cache-Control': 'private, no-store, max-age=0'}, json={'error': 'Không thể mở ảnh.'})
                 return
             assert request.method == 'POST'
             state['uploads'] += 1
-            route.fulfill(status=503, json={'error': 'Dịch vụ ảnh chưa sẵn sàng. Hãy thử lại sau.'})
+            if state['upload_ok']:
+                route.fulfill(status=200, json={'assetId': '00000000-0000-0000-0000-000000000004'})
+            else:
+                route.fulfill(status=503, json={'error': 'Dịch vụ ảnh chưa sẵn sàng. Hãy thử lại sau.'})
 
         context.route('**/api/account/images?*', upload)
         page.goto(BASE)
@@ -215,9 +228,49 @@ with sync_playwright() as p:
         expect(panel.get_by_role('heading', name='Điểm riêng Bình')).to_be_visible()
         expect(panel.get_by_label('Email', exact=True)).to_have_value(B['email'])
         assert state['writes'] == 2
+        # Successful commit with a slow canonical image must retain the owner's
+        # selected preview, explicitly labelled as a saved-image transition.
+        state['upload_ok'] = True
+        state['write_mode'] = 'normal'
+        for kind, label in [('avatar', 'ảnh đại diện'), ('cover', 'ảnh bìa')]:
+            state['hold_image'] = True
+            panel.get_by_label('Chọn ' + label).set_input_files({'name': 'qa.png', 'mimeType': 'image/png', 'buffer': png})
+            expect(panel.get_by_alt_text('Xem trước ' + label)).to_be_visible()
+            panel.get_by_role('button', name='Lưu ' + label, exact=True).click()
+            expect(panel.get_by_role('status')).to_contain_text('Đã lưu ' + label)
+            expect(panel.get_by_alt_text('Đang tải ảnh đã lưu: ' + label)).to_be_visible()
+            expect(panel.get_by_role('button', name='Lưu ' + label, exact=True)).to_have_count(0)
+            deadline = time.monotonic() + 10
+            while not state['held_images'] and time.monotonic() < deadline:
+                page.wait_for_timeout(20)
+            assert state['held_images'], 'Canonical GET did not reach barrier'
+            if kind == 'avatar':
+                # A late canonical response cannot discard a newer local choice.
+                panel.get_by_label('Chọn ' + label).set_input_files({'name': 'next.png', 'mimeType': 'image/png', 'buffer': png})
+                expect(panel.get_by_alt_text('Xem trước ' + label)).to_be_visible()
+            state['hold_image'] = False
+            for held in state['held_images']:
+                held.fulfill(status=200, content_type='image/webp', headers={'Cache-Control': 'private, no-store'}, body=state['image_bytes'])
+            state['held_images'].clear()
+            if kind == 'avatar':
+                expect(panel.get_by_alt_text('Xem trước ' + label)).to_be_visible()
+                panel.get_by_role('button', name='Hủy ảnh đã chọn', exact=True).click()
+            expect(panel.get_by_alt_text('Đã lưu ' + label)).to_be_visible()
+            expect(panel.get_by_alt_text('Đang tải ảnh đã lưu: ' + label)).to_have_count(0)
+        assert state['writes'] == 4 and state['uploads'] == 3
+        for mode in ['denied', 'error']:
+            state['image_mode'] = mode
+            panel.get_by_label('Chọn ảnh bìa').set_input_files({'name': 'qa.png', 'mimeType': 'image/png', 'buffer': png})
+            with page.expect_response('**/rest/v1/rpc/update_my_account'):
+                panel.get_by_role('button', name='Lưu ảnh bìa', exact=True).click()
+            expect(panel.get_by_role('status')).to_contain_text('Đã lưu ảnh bìa')
+            expect(panel.get_by_alt_text('Đang tải ảnh đã lưu: ảnh bìa')).to_have_count(0)
+            expect(panel.get_by_alt_text('Đã lưu ảnh bìa')).to_have_count(0)
+            expect(panel.get_by_text('Chưa có ảnh bìa', exact=True)).to_be_visible()
+        assert state['writes'] == 6 and state['uploads'] == 5
         assert not errors, errors
         page.screenshot(path=str(OUT / f'account-{width}.png'), full_page=True)
-        reports.append({'width': width, 'checks': ['read-retry', 'ratings-retry', 'proxy-denial-fallback', 'proxy-webp-blob-render', 'no-direct-storage-reads', 'upload-failure-preview', 'lost-committed-response-no-replay', 'reload-canonical-profile', 'unmounted-late-write', 'cross-tab-account-switch-late-read', 'mobile-keyboard'], 'image_reads': state['image_reads'], 'writes': state['writes'], 'page_errors': errors})
+        reports.append({'width': width, 'checks': ['read-retry', 'ratings-retry', 'proxy-denial-fallback', 'proxy-webp-blob-render', 'no-direct-storage-reads', 'upload-failure-preview', 'lost-committed-response-no-replay', 'reload-canonical-profile', 'unmounted-late-write', 'cross-tab-account-switch-late-read', 'mobile-keyboard', 'saved-avatar-cover-slow-read-transition', 'new-selection-survives-late-image', 'canonical-denial-error-revokes-transition'], 'image_reads': state['image_reads'], 'writes': state['writes'], 'page_errors': errors})
         context.close()
         print('PASS account local mock faults:', width, flush=True)
     browser.close()

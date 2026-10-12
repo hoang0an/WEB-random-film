@@ -7,7 +7,7 @@ import {imageUrl} from '@/lib/posters';
 import './account-panel.css';
 
 type Props = {service: AccountService; email: string | null; onProfileSaved: (profile: AccountProfile) => void; onProfileLoaded?: (profile: AccountProfile) => void; onClose: () => void; onUnauthorized?: () => void};
-type Draft = {file: File; url: string};
+type Draft = {file: File; url: string; committedPath?: string};
 const kinds: ImageKind[] = ['avatar', 'cover'];
 const revoke = (url: string | null | undefined) => {if (url?.startsWith('blob:')) URL.revokeObjectURL(url);};
 function message(error: unknown) {
@@ -46,15 +46,17 @@ export default function AccountPanel({service, email, onProfileSaved, onProfileL
   const [drafts, setDrafts] = useState<Partial<Record<ImageKind, Draft>>>({});
   const ownedUrls = useRef<Record<ImageKind, string | null>>({avatar: null, cover: null});
   const ownedDrafts = useRef<Partial<Record<ImageKind, Draft>>>({});
+  const draftTimers = useRef<Partial<Record<ImageKind, ReturnType<typeof setTimeout>>>>({});
   const valid = (token: number) => active.current && generation.current === token && identity.current.service === service && identity.current.email === email;
   const fail = (error: unknown) => {if (/unauthorized|unauthenticated|auth_required|jwt|session|phiên đăng nhập.*hết hạn|phiên đăng nhập.*thay đổi/i.test(error instanceof Error ? error.message : String(error))) callbacks.current.onUnauthorized?.(); return message(error);};
   const close = () => {
     active.current = false; generation.current++;
-    kinds.forEach(kind => {revoke(ownedUrls.current[kind]); ownedUrls.current[kind] = null; revoke(ownedDrafts.current[kind]?.url);});
+    kinds.forEach(kind => {clearTimeout(draftTimers.current[kind]); revoke(ownedUrls.current[kind]); ownedUrls.current[kind] = null; revoke(ownedDrafts.current[kind]?.url);});
     ownedDrafts.current = {}; setUrls({avatar: null, cover: null}); setDrafts({});
     callbacks.current.onClose();
   };
   function clearDraft(kind: ImageKind) {
+    clearTimeout(draftTimers.current[kind]); delete draftTimers.current[kind];
     selections.current[kind]++;
     revoke(ownedDrafts.current[kind]?.url); delete ownedDrafts.current[kind];
     setDrafts({...ownedDrafts.current});
@@ -76,7 +78,7 @@ export default function AccountPanel({service, email, onProfileSaved, onProfileL
     locked.current = false; setBusy(false); setProfile(null); setName(''); setRatings([]); setCursor(null); setStatus(''); setNeedsRefresh(false);
     kinds.forEach(kind => {revoke(ownedUrls.current[kind]); ownedUrls.current[kind] = null; clearDraft(kind);}); setUrls({avatar: null, cover: null});
     void loadProfile(token); void loadRatings(null, token);
-    return () => {active.current = false; generation.current++; kinds.forEach(kind => {revoke(ownedUrls.current[kind]); ownedUrls.current[kind] = null; revoke(ownedDrafts.current[kind]?.url);}); ownedDrafts.current = {};};
+    return () => {active.current = false; generation.current++; kinds.forEach(kind => {clearTimeout(draftTimers.current[kind]); revoke(ownedUrls.current[kind]); ownedUrls.current[kind] = null; revoke(ownedDrafts.current[kind]?.url);}); ownedDrafts.current = {};};
     // Each service instance belongs to one account; every response checks that identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [service, email]);
@@ -108,6 +110,9 @@ export default function AccountPanel({service, email, onProfileSaved, onProfileL
         if (cancelled || currentRound !== round || !valid(token)) {revoke(url); return;}
         if (ownedUrls.current[kind] !== url) revoke(ownedUrls.current[kind]);
         ownedUrls.current[kind] = url; setUrls(previous => ({...previous, [kind]: url}));
+        // Only an owner-selected transition for this exact committed path is
+        // released here. A newer selection must survive a late image response.
+        if (path && ownedDrafts.current[kind]?.committedPath === path) clearDraft(kind);
       }));
     }
     void refresh(); const timer = setInterval(() => void refresh(), 45_000);
@@ -128,7 +133,26 @@ export default function AccountPanel({service, email, onProfileSaved, onProfileL
       commitStarted = true;
       const next = await service.updateProfile({...update, expectedRevision: revision});
       if (!valid(token)) return;
-      setProfile(next); setName(next.name); if (imageKind) clearDraft(imageKind);
+      if (imageKind) {
+        revoke(ownedUrls.current[imageKind]); ownedUrls.current[imageKind] = null;
+        setUrls(previous => ({...previous, [imageKind]: null}));
+        const path = imageKind === 'avatar' ? next.avatarPath : next.coverPath;
+        const draft = ownedDrafts.current[imageKind];
+        if (path && draft) {
+          ownedDrafts.current[imageKind] = {...draft, committedPath: path};
+          setDrafts({...ownedDrafts.current});
+          clearTimeout(draftTimers.current[imageKind]);
+          // Local owner preview is transitional, never a cached read grant.
+          // Drop it on canonical denial/error, actor change or this deadline.
+          draftTimers.current[imageKind] = setTimeout(() => {
+            if (valid(token) && ownedDrafts.current[imageKind]?.committedPath === path) {
+              clearDraft(imageKind);
+              setProfileError('Ảnh đã lưu nhưng tải hiển thị chậm. Đóng và mở lại tài khoản để thử tải ảnh.');
+            }
+          }, 15_000);
+        } else clearDraft(imageKind);
+      }
+      setProfile(next); setName(next.name);
       callbacks.current.onProfileSaved(next); setStatus(label);
     } catch (error) {if (valid(token)) {setProfileError(fail(error)); if (commitStarted) setNeedsRefresh(true);}}
     finally {if (valid(token)) {locked.current = false; setBusy(false);}}
@@ -157,14 +181,14 @@ export default function AccountPanel({service, email, onProfileSaved, onProfileL
     return <section className="account-image-editor" aria-label={avatar ? 'Ảnh đại diện' : 'Ảnh bìa'}>
       <h3>{avatar ? 'Ảnh đại diện' : 'Ảnh bìa'}</h3>
       <div className={`account-image account-image-${kind}`}>
-        {url ? <img src={url} alt={`${drafts[kind] ? 'Xem trước' : 'Đã lưu'} ${label}`} referrerPolicy="no-referrer" onError={() => {if (ownedDrafts.current[kind]?.url === url) {clearDraft(kind); setProfileError('Không thể mở ảnh đã chọn. Hãy chọn ảnh khác.');} else if (ownedUrls.current[kind] === url) {revoke(url); ownedUrls.current[kind] = null; setUrls(previous => ({...previous, [kind]: null}));}}}/> : <span>{avatar ? initials : 'Chưa có ảnh bìa'}</span>}
+        {url ? <img src={url} alt={`${drafts[kind]?.committedPath ? 'Đang tải ảnh đã lưu:' : drafts[kind] ? 'Xem trước' : 'Đã lưu'} ${label}`} referrerPolicy="no-referrer" onError={() => {if (ownedDrafts.current[kind]?.url === url) {clearDraft(kind); setProfileError('Không thể mở ảnh đã chọn. Hãy chọn ảnh khác.');} else if (ownedUrls.current[kind] === url) {revoke(url); ownedUrls.current[kind] = null; setUrls(previous => ({...previous, [kind]: null}));}}}/> : <span>{avatar ? initials : 'Chưa có ảnh bìa'}</span>}
       </div>
       <label className="account-file-label"><ImagePlus size={16} aria-hidden="true"/> Chọn {label}<input type="file" accept="image/jpeg,image/png,image/webp" aria-label={`Chọn ${label}`} disabled={disabled} onChange={event => {void choose(kind, event.target.files?.[0]); event.target.value = '';}}/></label>
       <div className="account-actions">
-        {drafts[kind] && <><button disabled={disabled} onClick={() => void save({}, `Đã lưu ${label}.`, kind)}>Lưu {label}</button><button disabled={busy} onClick={() => clearDraft(kind)}>Hủy ảnh đã chọn</button></>}
+        {drafts[kind] && !drafts[kind]?.committedPath && <><button disabled={disabled} onClick={() => void save({}, `Đã lưu ${label}.`, kind)}>Lưu {label}</button><button disabled={busy} onClick={() => clearDraft(kind)}>Hủy ảnh đã chọn</button></>}
         {path && <button disabled={disabled} onClick={() => void save({[avatar ? 'avatarAssetId' : 'coverAssetId']: null}, `Đã bỏ ${label}.`, kind)}>Bỏ {label}</button>}
       </div>
-      {drafts[kind] && <p className="account-help">Xem trước phần ảnh cắt giữa. Ảnh chưa được lưu.</p>}
+      {drafts[kind] && <p className="account-help">{drafts[kind]?.committedPath ? 'Đã lưu. Đang tải ảnh đã lưu…' : 'Xem trước phần ảnh cắt giữa. Ảnh chưa được lưu.'}</p>}
     </section>;
   }
   return <div className="account-overlay" onMouseDown={event => {if (event.target === event.currentTarget) close();}}>
