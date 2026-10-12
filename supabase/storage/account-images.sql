@@ -1,14 +1,8 @@
 -- Storage policies are installed separately from public schema bootstrap.
 -- Run after 20261011_account_features.sql. No Storage objects are deleted by SQL.
--- Read access is authenticated download and its CDN metadata lookup only;
--- clients cannot mint signed URLs/list. Both operations use the same actor check.
--- Requires the vendor operation helper: https://supabase.com/docs/guides/storage/schema/helper-functions
+-- Browser reads use the application proxy with a caller-JWT authorization RPC.
+-- Direct Storage downloads/metadata/sign/list are denied for both account buckets.
 begin;
-do $$ begin
- if to_regprocedure('storage.allow_only_operation(text)') is null then
-  raise exception 'account_images_requires_storage_operation_helper';
- end if;
-end $$;
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values ('account-avatars','account-avatars',false,3145728,array['image/webp']),
        ('account-covers','account-covers',false,3145728,array['image/webp'])
@@ -28,14 +22,34 @@ revoke all on function private.can_read_account_image(text,text) from public;
 grant usage on schema private to anon,authenticated;
 grant execute on function private.can_read_account_image(text,text) to anon,authenticated;
 
+-- Narrow actor-scoped authorization only; never returns registry/group data.
+-- Each HTTP RPC call gets its own current database snapshot. The proxy calls
+-- again after buffering Storage bytes; it must not reuse the earlier decision.
+create or replace function public.can_read_my_account_image(p_kind text,p_path text) returns boolean
+language plpgsql stable security invoker set search_path='' as $$
+begin
+ if auth.uid() is null or p_kind is null or p_kind not in ('avatar','cover') or p_path is null then
+  return false;
+ end if;
+ if p_path !~ ('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/' || p_kind || '/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.webp$') then
+  return false;
+ end if;
+ return private.can_read_account_image(
+  case p_kind when 'avatar' then 'account-avatars' else 'account-covers' end,p_path
+ );
+end;
+$$;
+revoke all on function public.can_read_my_account_image(text,text) from public,anon,service_role;
+grant execute on function public.can_read_my_account_image(text,text) to authenticated;
+
+-- PUBLIC includes every browser role. This restrictive policy vetoes even a
+-- broad legacy permissive policy. Backend service_role bypasses RLS, but may
+-- only download after the separate caller-JWT authorization has allowed it.
 drop policy if exists account_images_read on storage.objects;
-create policy account_images_read on storage.objects for select to authenticated
-using (bucket_id in ('account-avatars','account-covers') and (storage.allow_only_operation('object.get_authenticated') or storage.allow_only_operation('object.get_authenticated_info')) and private.can_read_account_image(bucket_id,name));
--- Restrictive guards prevent a pre-existing permissive Storage policy from bypassing
--- account privacy or the server's decoder. Supabase service_role bypasses RLS.
 drop policy if exists account_images_select_guard on storage.objects;
 create policy account_images_select_guard on storage.objects as restrictive for select to public
-using (bucket_id not in ('account-avatars','account-covers') or ((storage.allow_only_operation('object.get_authenticated') or storage.allow_only_operation('object.get_authenticated_info')) and private.can_read_account_image(bucket_id,name)));
+using (bucket_id not in ('account-avatars','account-covers'));
+
 drop policy if exists account_images_insert_guard on storage.objects;
 create policy account_images_insert_guard on storage.objects as restrictive for insert to public
 with check (bucket_id not in ('account-avatars','account-covers'));

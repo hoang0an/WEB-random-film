@@ -1,6 +1,6 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 import type {AccountProfile, AccountService, AccountUpdate, ImageKind, PersonalRating} from './account-types.ts';
-import {normalizeAccountName, validateImageInput} from './account-types.ts';
+import {ACCOUNT_IMAGE_LIMIT, normalizeAccountName, validateImageInput} from './account-types.ts';
 import {RequestTimeoutError, withRequestDeadline} from './request-deadline.ts';
 import {readableError} from './repository-errors.ts';
 
@@ -11,10 +11,6 @@ export function accountError(error: unknown): Error {
   if (/invalid_name/i.test(message)) return new Error('Tên cần từ 1 đến 80 ký tự.');
   if (/unauthorized|jwt|auth_required/i.test(message)) return new Error('Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.');
   return new Error(readableError(error));
-}
-function isAuthError(error:unknown):boolean {
-  const value=error as {message?:string;code?:string;status?:number;statusCode?:string};
-  return value?.status===401||value?.statusCode==='401'||/unauthorized|jwt|auth_required|PGRST30[12]/i.test(`${value?.message??''} ${value?.code??''}`);
 }
 function profile(raw: Record<string,unknown>): AccountProfile {
   if (!raw || typeof raw.id!=='string' || typeof raw.name!=='string' || !Number.isSafeInteger(raw.revision)) throw new Error('Phản hồi hồ sơ không hợp lệ.');
@@ -84,16 +80,26 @@ export function createLiveAccountService(client: SupabaseClient): AccountService
       await checkActor();
       const {data:sessionData,error:sessionError}=await withRequestDeadline(()=>client.auth.getSession(),10000);
       if(sessionError||!sessionData.session||sessionData.session.user.id!==actor) throw new Error('Phiên đăng nhập đã thay đổi. Hãy mở lại hồ sơ.');
-      // Authenticated download rechecks RLS on every refresh, without a reusable
-      // signed capability. Pin the verified actor token before the SDK fetch.
+      // Pin the verified actor token. The server checks live permissions for
+      // this exact asset; browser Storage paths never grant read capabilities.
       const token=sessionData.session.access_token;
-      const {data,error}=await withRequestDeadline(signal=>client.storage.from(kind==='avatar'?'account-avatars':'account-covers').setHeader('Authorization',`Bearer ${token}`).download(path,{}, {signal,cache:'no-store'}),10000);
-      const url=data?URL.createObjectURL(data):null;
-      try {
-        await checkActor();
-        if(error) {if(isAuthError(error))throw accountError(new Error('auth_required'));return null;}
-        return url;
-      } catch(error) {if(url)URL.revokeObjectURL(url);throw error;}
+      const query=new URLSearchParams({kind,path});
+      const blob=await withRequestDeadline(async signal=>{
+        const response=await fetch(`/api/account/images?${query}`,{method:'GET',headers:{Authorization:`Bearer ${token}`},credentials:'same-origin',cache:'no-store',signal});
+        if(response.status===401) throw accountError(new Error('auth_required'));
+        if(response.status===403||response.status===404) return null;
+        if(!response.ok) throw new Error('Không thể tải ảnh tài khoản. Hãy thử lại sau.');
+        if(response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase()!=='image/webp') throw new Error('Phản hồi ảnh không hợp lệ.');
+        const length=response.headers.get('Content-Length');
+        if(length!==null&&(!/^\d+$/.test(length)||Number(length)>ACCOUNT_IMAGE_LIMIT)) throw new Error('Phản hồi ảnh không hợp lệ.');
+        const value=await response.blob();
+        if(signal.aborted) throw new RequestTimeoutError();
+        if(value.size<=0||value.size>ACCOUNT_IMAGE_LIMIT) throw new Error('Phản hồi ảnh không hợp lệ.');
+        return value;
+      },10000);
+      const url=blob?URL.createObjectURL(blob):null;
+      try {await checkActor();return url;}
+      catch(error) {if(url)URL.revokeObjectURL(url);throw error;}
     }
   };
 }

@@ -17,23 +17,37 @@ await db.exec(`create schema storage;
  -- Deliberately broad legacy policy: account restrictive guards must still prevent bypass.
  create policy legacy_allow on storage.objects for all to public using(true) with check(true);`);
 const storageSql=await readFile('supabase/storage/account-images.sql','utf8');
-await assert.rejects(db.exec(storageSql),/account_images_requires_storage_operation_helper/);
-await db.exec('rollback');
-assert.equal((await db.query('select * from storage.buckets')).rows.length,0);
-// Fixture mock only: production SQL must require Supabase's vendor helper, never replace it.
+// Fixture-only operation helper for the exact previously deployed upgrade SQL.
 await db.exec(`create function storage.allow_only_operation(operation text) returns boolean
  language sql stable as $$select coalesce(nullif(current_setting('storage.operation',true),'')=operation,false)$$;`);
 const operation=async value=>{await db.query("select set_config('storage.operation',$1,false)",[value]);};
 await operation('object.get_authenticated');
-await db.exec(storageSql);
-await db.exec(storageSql);
-// Existing installations receive only the two-policy repair, without reinstalling buckets.
+let deployed;
 if(mode==='upgrade') {
- const oldSql=storageSql.replaceAll("(storage.allow_only_operation('object.get_authenticated') or storage.allow_only_operation('object.get_authenticated_info'))","storage.allow_only_operation('object.get_authenticated')");
- await db.exec(oldSql);
- const repair=await readFile('supabase/storage/20261012_account_image_metadata.sql','utf8');
+ // Reconstruct the deployed 07ab753 SELECT policies explicitly, not from
+ // the new proxy policy, so upgrade cannot accidentally test only fresh SQL.
+ deployed=storageSql.slice(0,storageSql.indexOf('-- Narrow actor-scoped'))+`
+ drop policy if exists account_images_read on storage.objects;
+ create policy account_images_read on storage.objects for select to authenticated
+ using (bucket_id in ('account-avatars','account-covers') and (storage.allow_only_operation('object.get_authenticated') or storage.allow_only_operation('object.get_authenticated_info')) and private.can_read_account_image(bucket_id,name));
+ drop policy if exists account_images_select_guard on storage.objects;
+ create policy account_images_select_guard on storage.objects as restrictive for select to public
+ using (bucket_id not in ('account-avatars','account-covers') or ((storage.allow_only_operation('object.get_authenticated') or storage.allow_only_operation('object.get_authenticated_info')) and private.can_read_account_image(bucket_id,name)));
+ `+storageSql.slice(storageSql.indexOf('drop policy if exists account_images_insert_guard'));
+ await db.exec(deployed);
+ const repair=await readFile('supabase/storage/20261012_account_image_proxy.sql','utf8');
  await db.exec(repair);await db.exec(repair);
+} else {
+ // Server-only reads have no vendor operation-helper dependency.
+ await db.exec('drop function storage.allow_only_operation(text)');
+ await db.exec(storageSql);await db.exec(storageSql);
 }
+assert.equal((await db.query("select has_function_privilege('authenticated','public.can_read_my_account_image(text,text)','execute') allowed")).rows[0].allowed,true);
+for(const role of ['anon','service_role']) assert.equal((await db.query("select has_function_privilege($1,'public.can_read_my_account_image(text,text)','execute') allowed",[role])).rows[0].allowed,false);
+const canRead=async(kind,path)=>(await db.query('select public.can_read_my_account_image($1,$2) allowed',[kind,path])).rows[0].allowed;
+await login(a);assert.equal(await canRead('avatar',a+'/avatar/'+a+'.webp'),false);
+await login(null,'anon');await assert.rejects(canRead('avatar','invalid'),/permission denied/);
+await login(null,'service_role');await assert.rejects(canRead('avatar','invalid'),/permission denied/);
 const reserve=async(owner,kind='avatar',pathOverride)=>{
  const id=(await db.query('select gen_random_uuid() id')).rows[0].id;
  const path=pathOverride??owner+'/'+kind+'/'+id+'.webp';
@@ -79,22 +93,36 @@ await assert.rejects(db.query('select public.update_my_account(p_cover_asset=>$1
 await assert.rejects(db.query('select public.update_my_account(p_avatar_asset=>$1,p_change_avatar=>true,p_expected_revision=>0)',[missing.id]),/invalid_asset/);
 await assert.rejects(db.query('insert into public.account_image_assets(id,owner_id,kind,path) values(gen_random_uuid(),$1,\'avatar\',\'forged\')',[a]),/permission denied/);
 await db.query('select public.update_my_account(p_avatar_asset=>$1,p_cover_asset=>$2,p_change_avatar=>true,p_change_cover=>true,p_expected_revision=>0)',[avatar.id,cover.id]);
-assert.deepEqual((await db.query('select name from storage.objects order by name')).rows.map(x=>x.name).sort(),[avatar.path,cover.path].sort());
-// Hosted CDN downloads first perform authenticated metadata lookup. Both
-// operations must enforce the same owner/current-peer/cover privacy rules.
-for(const value of ['object.get_authenticated','object.get_authenticated_info']) {
- await operation(value);
- for(const actor of [a,b,c,null]) {
-  await login(actor,actor?'authenticated':'anon');
-  const expected=actor===a?[avatar.path,cover.path]:actor===b?[avatar.path]:[];
-  assert.deepEqual((await db.query('select name from storage.objects')).rows.map(x=>x.name).sort(),expected.sort(),value+' actor '+actor);
- }
-}
+assert.equal((await db.query('select name from storage.objects')).rows.length,0);
+// Every direct browser read is denied, including metadata and legacy permissive policy.
 for(const actor of [a,b,c,null]) {
  await login(actor,actor?'authenticated':'anon');
- for(const value of ['object.sign','object.sign_many','object.list','object.get_public','object.info_public','object.head_authenticated_info','']) {
-  await operation(value);assert.equal((await db.query('select * from storage.objects')).rows.length,0);
+ for(const value of ['object.get_authenticated','object.get_authenticated_info','object.sign','object.sign_many','object.list','object.get_public','object.info_public','object.head_authenticated_info','']) {
+  await operation(value);assert.equal((await db.query('select * from storage.objects')).rows.length,0,value+' actor '+actor);
  }
+ if(actor) {
+  assert.equal(await canRead('avatar',avatar.path),actor===a||actor===b);
+  assert.equal(await canRead('cover',cover.path),actor===a);
+  assert.equal(await canRead('avatar',pending.path),false);
+  assert.equal(await canRead('avatar',missing.path),false);
+  for(const [kind,path] of [['bad',avatar.path],['cover',avatar.path],['avatar',cover.path],['avatar',avatar.path+'/x'],['avatar','../'+avatar.path],['avatar',avatar.path.toUpperCase()],['avatar',null],[null,avatar.path],['avatar',a+'/avatar/forged.webp']]) {
+   assert.equal(await canRead(kind,path),false);
+  }
+ }
+}
+// Upgrade is idempotent and never changes buckets, objects or account registry rows.
+await login(null,'service_role');
+assert.equal((await db.query('select * from storage.objects')).rows.length,4);
+if(mode==='upgrade') {
+ await db.exec('reset role');await db.exec(deployed);await operation('object.get_authenticated');
+ await login(a);assert.deepEqual((await db.query('select name from storage.objects order by name')).rows.map(x=>x.name).sort(),[avatar.path,cover.path].sort());
+ await login(b);assert.deepEqual((await db.query('select name from storage.objects')).rows.map(x=>x.name),[avatar.path]);
+ await db.exec('reset role');
+ const before={buckets:(await db.query('select * from storage.buckets order by id')).rows,objects:(await db.query('select * from storage.objects order by id')).rows,assets:(await db.query('select * from public.account_image_assets order by id')).rows};
+ const repair=await readFile('supabase/storage/20261012_account_image_proxy.sql','utf8');
+ await db.exec(repair);await db.exec(repair);
+ assert.deepEqual({buckets:(await db.query('select * from storage.buckets order by id')).rows,objects:(await db.query('select * from storage.objects order by id')).rows,assets:(await db.query('select * from public.account_image_assets order by id')).rows},before);
+ await login(a);assert.equal(await canRead('avatar',avatar.path),true);assert.equal((await db.query('select * from storage.objects')).rows.length,0);
 }
 await operation('object.get_authenticated');await login(a);
 for(const role of ['authenticated','anon']) {
@@ -103,12 +131,14 @@ for(const role of ['authenticated','anon']) {
  assert.equal((await db.query('delete from storage.objects returning name')).rows.length,0);
  assert.equal((await db.query("update storage.objects set name='overwrite' returning name")).rows.length,0);
 }
-await login(b);assert.deepEqual((await db.query('select name from storage.objects')).rows.map(x=>x.name),[avatar.path]);
+await login(b);assert.equal(await canRead('avatar',avatar.path),true);
 assert.deepEqual((await db.query('select owner_id from public.account_settings')).rows.map(x=>x.owner_id),[b]);
-await db.query('select public.leave_group($1)',[gid]);assert.equal((await db.query('select * from storage.objects')).rows.length,0);
+await db.query('select public.leave_group($1)',[gid]);assert.equal(await canRead('avatar',avatar.path),false);assert.equal((await db.query('select * from storage.objects')).rows.length,0);
 await operation('object.get_authenticated_info');assert.equal((await db.query('select * from storage.objects')).rows.length,0);
 await operation('object.get_authenticated');
-await login(c);assert.equal((await db.query('select * from storage.objects')).rows.length,0);
+await db.exec('reset role');await db.query('delete from public.members where user_id=$1',[a]);
+await login(a);assert.equal(await canRead('avatar',avatar.path),true);assert.equal(await canRead('cover',cover.path),true); // Owner needs no shared group.
+await login(c);assert.equal(await canRead('avatar',avatar.path),false);assert.equal((await db.query('select * from storage.objects')).rows.length,0);
 await login(null,'anon');assert.equal((await db.query('select * from storage.objects')).rows.length,0);
 const replacement=await upload(a);await login(a);
 await db.query('select public.update_my_account(p_avatar_asset=>$1,p_change_avatar=>true,p_expected_revision=>1)',[replacement.id]);
@@ -116,6 +146,7 @@ await db.query('select public.update_my_account(p_avatar_asset=>$1,p_change_avat
 await assert.rejects(db.query('select public.update_my_account(p_avatar_asset=>$1,p_change_avatar=>true,p_expected_revision=>1)',[pending.id]),/revision_conflict/);
 assert.equal((await db.query('select public.get_my_account() result')).rows[0].result.avatar_path,replacement.path);
 assert.equal((await db.query('select * from storage.objects where name=$1',[avatar.path])).rows.length,0);
+assert.equal(await canRead('avatar',avatar.path),false);assert.equal(await canRead('avatar',replacement.path),true);
 await assert.rejects(db.query('select public.update_my_account(p_avatar_asset=>$1,p_change_avatar=>true,p_expected_revision=>2)',[avatar.id]),/invalid_asset/);
 await assert.rejects(db.query('select public.claim_account_image_cleanup($1)',[a]),/permission denied/);
 const expired=await upload(a,'avatar',true);
@@ -136,8 +167,9 @@ await login(b);assert.equal((await db.query('select public.get_my_account() resu
 await login(a);await assert.rejects(db.query('select public.update_my_account(p_avatar_asset=>$1,p_change_avatar=>true,p_expected_revision=>2)',[expired.id]),/invalid_asset/);
 await db.query('select public.update_my_account(p_change_avatar=>true,p_change_cover=>true,p_expected_revision=>2)');
 const account=(await db.query('select public.get_my_account() result')).rows[0].result;assert.equal(account.avatar_path,null);assert.equal(account.cover_path,null);
+assert.equal(await canRead('avatar',replacement.path),false);assert.equal(await canRead('cover',cover.path),false);
 assert.equal((await db.query('select * from storage.objects')).rows.length,0);
 await login(null,'service_role');await db.query("delete from public.account_image_assets where id=$1 and state='deleting'",[expired.id]);
 assert.ok(!(await db.query('select * from public.claim_account_image_cleanup($1)',[a])).rows.some(x=>x.id===expired.id));
-await db.close();console.log('PASS account Storage SQL '+mode+': authenticated-download owner/current-peer/leaver/outsider/anon, signing/list blocked, helper preflight, pending/history, direct-write bypass, registry CAS and cleanup retries; no hosted Storage verification.');
+await db.close();console.log('PASS account Storage SQL '+mode+': server-only direct reads denied, narrow actor RPC owner/current-peer/leaver/outsider/anon, deployed-policy upgrade, pending/history, direct-write bypass, registry CAS and cleanup retries; no hosted Storage verification.');
 }

@@ -7,7 +7,7 @@ import json
 import os
 import time
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 from playwright.sync_api import sync_playwright, expect
 
 BASE = os.getenv('TEST_URL', 'http://localhost:3116')
@@ -29,7 +29,7 @@ def session(user=A):
 
 
 def profile(user):
-    return {'id': user['id'], 'name': user['user_metadata']['name'], 'revision': 0, 'avatar_path': user['id'] + '/avatar/qa.webp', 'cover_path': None}
+    return {'id': user['id'], 'name': user['user_metadata']['name'], 'revision': 0, 'avatar_path': user['id'] + '/avatar/00000000-0000-0000-0000-000000000003.webp', 'cover_path': None}
 
 
 reports = []
@@ -38,11 +38,19 @@ with sync_playwright() as p:
     for width in [1440, 375]:
         context = browser.new_context(viewport={'width': width, 'height': 900 if width > 680 else 850}, is_mobile=width <= 680, has_touch=width <= 680)
         context.add_init_script('if (!sessionStorage.getItem("qa-account-seeded")) {localStorage.setItem("sb-127-auth-token",' + json.dumps(json.dumps(session())) + ');sessionStorage.setItem("qa-account-seeded","1");}')
-        state = {'user': A, 'profiles': {A['id']: profile(A), B['id']: profile(B)}, 'fail_profile': False, 'fail_ratings': True, 'write_mode': 'normal', 'writes': 0, 'uploads': 0, 'hold_reads': False, 'held': []}
+        state = {'user': A, 'profiles': {A['id']: profile(A), B['id']: profile(B)}, 'fail_profile': False, 'fail_ratings': True, 'write_mode': 'normal', 'writes': 0, 'uploads': 0, 'image_reads': 0, 'image_mode': 'denied', 'image_bytes': None, 'hold_reads': False, 'held': []}
         errors = []
         page = context.new_page()
         page.set_default_timeout(10000)
         page.on('pageerror', lambda error: errors.append(str(error)))
+
+        def wait_for_held_route():
+            # request events can precede route callbacks; synchronize the
+            # actual barrier before fulfilling or changing actor state.
+            deadline = time.monotonic() + 10
+            while not state['held'] and time.monotonic() < deadline:
+                page.wait_for_timeout(20)
+            assert state['held'], 'Mock request did not reach the held-route barrier'
 
         def service(route):
             request = route.request
@@ -88,7 +96,7 @@ with sync_playwright() as p:
                 else:
                     route.fulfill(status=200, headers=CORS, json=current)
             elif path.startswith('/storage/v1/object/'):
-                route.fulfill(status=404, headers=CORS, json={'message': 'missing image'})
+                raise AssertionError('Client bypassed account image proxy via direct Storage')
             else:
                 raise AssertionError('Unexpected local mock route: ' + path)
 
@@ -96,6 +104,18 @@ with sync_playwright() as p:
         context.route('https://image.tmdb.org/**', lambda route: route.abort())
 
         def upload(route):
+            request = route.request
+            assert request.headers.get('authorization', '').startswith('Bearer '), 'Proxy request did not pin JWT'
+            if request.method == 'GET':
+                state['image_reads'] += 1
+                query = parse_qs(urlparse(request.url).query)
+                assert query['kind'][0] in ['avatar', 'cover'] and query.get('path')
+                if state['image_mode'] == 'ok':
+                    route.fulfill(status=200, content_type='image/webp', headers={'Cache-Control': 'private, no-store, max-age=0'}, body=state['image_bytes'])
+                else:
+                    route.fulfill(status=404, headers={'Cache-Control': 'private, no-store, max-age=0'}, json={'error': 'Không thể mở ảnh.'})
+                return
+            assert request.method == 'POST'
             state['uploads'] += 1
             route.fulfill(status=503, json={'error': 'Dịch vụ ảnh chưa sẵn sàng. Hãy thử lại sau.'})
 
@@ -111,8 +131,15 @@ with sync_playwright() as p:
         state['fail_profile'] = False
         panel.get_by_role('button', name='Tải lại hồ sơ').click()
         expect(panel.get_by_label('Tên hiển thị')).to_have_value('An')
-        # Failed authenticated private downloads use initials and preserve the profile.
+        # Denied proxy GET uses initials; no direct Storage request is permitted.
         expect(panel.locator('.account-image-avatar')).to_have_text('A')
+        assert state['image_reads'] > 0
+        state['image_bytes'] = base64.b64decode(page.evaluate("""() => {const c=document.createElement('canvas');c.width=32;c.height=24;return c.toDataURL('image/webp').split(',')[1];}"""))
+        state['image_mode'] = 'ok'
+        page.keyboard.press('Escape')
+        account.click()
+        expect(panel.get_by_alt_text('Đã lưu ảnh đại diện')).to_be_visible()
+        page.wait_for_function('(image) => image.complete && image.naturalWidth > 0', arg=panel.get_by_alt_text('Đã lưu ảnh đại diện').element_handle())
         expect(panel.get_by_role('button', name='Thử tải điểm lại')).to_be_visible()
         state['fail_ratings'] = False
         panel.get_by_role('button', name='Thử tải điểm lại').click()
@@ -146,12 +173,14 @@ with sync_playwright() as p:
         panel.get_by_label('Tên hiển thị').fill('Tên response muộn')
         with page.expect_request('**/rest/v1/rpc/update_my_account'):
             panel.get_by_role('button', name='Lưu tên').click()
+        wait_for_held_route()
         page.keyboard.press('Escape')
         expect(panel).to_have_count(0)
-        for route, value in state['held']:
-            route.fulfill(status=200, headers=CORS, json=value)
+        with page.expect_response('**/auth/v1/user'):
+            for route, value in state['held']:
+                route.fulfill(status=200, headers=CORS, json=value)
         state['held'].clear()
-        page.wait_for_load_state('networkidle')
+        page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
         expect(page.locator('.user-name')).to_have_text('Tên đã commit')
         account.click()
         expect(panel.get_by_label('Tên hiển thị')).to_have_value('Tên response muộn')
@@ -166,6 +195,7 @@ with sync_playwright() as p:
         state['hold_reads'] = True
         with page.expect_request('**/rest/v1/rpc/get_my_account'):
             account.click()
+        wait_for_held_route()
         other.get_by_role('button', name='Đăng xuất', exact=True).click()
         expect(page.get_by_role('heading', name='Chào bạn trở lại')).to_be_visible()
         state['hold_reads'] = False
@@ -175,10 +205,11 @@ with sync_playwright() as p:
         expect(account).to_be_visible()
         account.click()
         expect(panel.get_by_label('Tên hiển thị')).to_have_value('Bình')
-        for route, value in state['held']:
-            route.fulfill(status=200, headers=CORS, json=value)
+        with page.expect_response('**/auth/v1/user'):
+            for route, value in state['held']:
+                route.fulfill(status=200, headers=CORS, json=value)
         state['held'].clear()
-        page.wait_for_load_state('networkidle')
+        page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
         expect(panel.get_by_label('Tên hiển thị')).to_have_value('Bình')
         expect(panel.get_by_role('heading', name='Điểm riêng An')).to_have_count(0)
         expect(panel.get_by_role('heading', name='Điểm riêng Bình')).to_be_visible()
@@ -186,7 +217,7 @@ with sync_playwright() as p:
         assert state['writes'] == 2
         assert not errors, errors
         page.screenshot(path=str(OUT / f'account-{width}.png'), full_page=True)
-        reports.append({'width': width, 'checks': ['read-retry', 'ratings-retry', 'private-url-fallback', 'upload-failure-preview', 'lost-committed-response-no-replay', 'reload-canonical-profile', 'unmounted-late-write', 'cross-tab-account-switch-late-read', 'mobile-keyboard'], 'writes': state['writes'], 'page_errors': errors})
+        reports.append({'width': width, 'checks': ['read-retry', 'ratings-retry', 'proxy-denial-fallback', 'proxy-webp-blob-render', 'no-direct-storage-reads', 'upload-failure-preview', 'lost-committed-response-no-replay', 'reload-canonical-profile', 'unmounted-late-write', 'cross-tab-account-switch-late-read', 'mobile-keyboard'], 'image_reads': state['image_reads'], 'writes': state['writes'], 'page_errors': errors})
         context.close()
         print('PASS account local mock faults:', width, flush=True)
     browser.close()

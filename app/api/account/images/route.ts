@@ -1,7 +1,38 @@
 import {createClient, type SupabaseClient} from '@supabase/supabase-js';
 import {createImageHandler, ImageInputError} from '@/lib/account-images-server';
+import {accountImageReadError, createImageReadHandler} from '@/lib/account-image-read-server';
 
 export const runtime = 'nodejs';
+export async function GET(request: Request) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !publicKey || !secret) return accountImageReadError(503);
+  const handler = createImageReadHandler({
+    async verify(token, signal) {
+      const response = await fetch(`${url}/auth/v1/user`, {headers: {apikey: publicKey, Authorization: `Bearer ${token}`}, cache: 'no-store', redirect: 'error', signal});
+      if (response.status === 401 || response.status === 403) return null;
+      if (!response.ok) throw new Error('authentication unavailable');
+      const user = await response.json();
+      if (typeof user.id !== 'string' || !user.id) throw new Error('invalid authentication response');
+      return user.id;
+    },
+    async authorize(token, kind, path, signal) {
+      // Two independent requests use the actor JWT against the project writer.
+      const response = await fetch(`${url}/rest/v1/rpc/can_read_my_account_image`, {
+        method: 'POST', headers: {apikey: publicKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'},
+        body: JSON.stringify({p_kind: kind, p_path: path}), cache: 'no-store', redirect: 'error', signal,
+      });
+      if (!response.ok) throw new Error('permission unavailable');
+      return response.json();
+    },
+    download(kind, path, signal) {
+      const bucket = kind === 'avatar' ? 'account-avatars' : 'account-covers';
+      return fetch(`${url}/storage/v1/object/${bucket}/${path}`, {headers: {apikey: secret, Authorization: `Bearer ${secret}`}, cache: 'no-store', redirect: 'error', signal});
+    },
+  });
+  return handler(request);
+}
 export async function POST(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
